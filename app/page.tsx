@@ -8,7 +8,15 @@ import type { AppUser } from "@/types/database";
 import { ErrorState, PageLoading } from "@/components/app-states";
 import { PasswordSetup } from "@/features/auth/password-setup";
 
-export default function Home({ initialView }: { initialView?: string } = {}) {
+export default function Home({
+  initialView,
+  allowedRoles,
+  portalName,
+}: {
+  initialView?: string;
+  allowedRoles?: AppUser["role"][];
+  portalName?: string;
+} = {}) {
   const [user, setUser] = useState<AppUser | null>(null),
     [loading, setLoading] = useState(true),
     [authError, setAuthError] = useState<string | null>(null),
@@ -37,6 +45,16 @@ export default function Home({ initialView }: { initialView?: string } = {}) {
         setUser(null);
         setAuthError(
           "Your account is signed in, but its Brunovia profile could not be loaded. Ask an administrator to verify the database migrations and user profile.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      if (allowedRoles && !allowedRoles.includes(profile.role)) {
+        await supabase.auth.signOut();
+        setUser(null);
+        setAuthError(
+          `This account does not have access to the ${portalName ?? "requested"} portal.`,
         );
         setLoading(false);
         return;
@@ -86,7 +104,7 @@ export default function Home({ initialView }: { initialView?: string } = {}) {
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [allowedRoles, portalName]);
   const signOut = async () => {
     if (hasSupabaseConfig()) await createClient().auth.signOut();
     setUser(null);
@@ -107,7 +125,11 @@ export default function Home({ initialView }: { initialView?: string } = {}) {
           />
         </div>
       )}
-      <Login onSuccess={setUser} />
+      <Login
+        onSuccess={setUser}
+        allowedRoles={allowedRoles}
+        portalName={portalName}
+      />
     </div>
   );
 }

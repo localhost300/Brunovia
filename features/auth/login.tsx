@@ -21,7 +21,15 @@ const schema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 type Form = z.infer<typeof schema>;
-export function Login({ onSuccess }: { onSuccess: (user: AppUser) => void }) {
+export function Login({
+  onSuccess,
+  allowedRoles,
+  portalName,
+}: {
+  onSuccess: (user: AppUser) => void;
+  allowedRoles?: AppUser["role"][];
+  portalName?: string;
+}) {
   const [show, setShow] = useState(false);
   const {
     register,
@@ -44,6 +52,12 @@ export function Login({ onSuccess }: { onSuccess: (user: AppUser) => void }) {
         .eq("id", data.user.id)
         .single();
       if (profileError) throw profileError;
+      if (allowedRoles && !allowedRoles.includes(profile.role)) {
+        await supabase.auth.signOut();
+        throw new Error(
+          `This account does not have access to the ${portalName ?? "requested"} portal.`,
+        );
+      }
       onSuccess({
         id: data.user.id,
         email: data.user.email ?? values.email,
@@ -93,7 +107,7 @@ export function Login({ onSuccess }: { onSuccess: (user: AppUser) => void }) {
             Welcome back
           </h2>
           <p className="mt-2 text-zinc-500">
-            Sign in to your Brunovia workspace
+            Sign in to your {portalName ? `${portalName} portal` : "Brunovia workspace"}
           </p>
           <form onSubmit={handleSubmit(submit)} className="mt-8 space-y-5">
             <Field label="Work email" error={errors.email?.message}>
