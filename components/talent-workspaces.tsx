@@ -84,7 +84,7 @@ export function PerformanceWorkspace({ user }: { user: AppUser }) {
         c
           .from("employee_kpis")
           .select(
-            "id,employee_id,period_start,period_end,actual_value,score,status,manager_comment,employee_comment,kpis(title,category,target_value,target_unit,weight),employees(id,employee_id,first_name,last_name)",
+            "id,employee_id,period_start,period_end,actual_value,score,status,manager_comment,employee_comment,kpis(title,category,target_value,target_unit,weight),employees!employee_kpis_employee_id_fkey(id,employee_id,first_name,last_name)",
           )
           .order("period_end", { ascending: false }),
         c

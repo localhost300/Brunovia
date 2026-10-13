@@ -62,7 +62,7 @@ export function LeaveWorkspace({ user }: { user: AppUser }) {
         client
           .from("leave_requests")
           .select(
-            "id,employee_id,leave_policy_id,leave_type,start_date,end_date,reason,status,created_at,employees(id,employee_id,first_name,last_name),leave_policies(name)",
+            "id,employee_id,leave_policy_id,leave_type,start_date,end_date,reason,status,created_at,employees!leave_requests_employee_id_fkey(id,employee_id,first_name,last_name),leave_policies(name)",
           )
           .order("created_at", { ascending: false })
           .limit(100),

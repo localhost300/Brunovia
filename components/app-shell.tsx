@@ -85,6 +85,20 @@ const AttendanceWorkspace = dynamic(
     ),
   { loading: moduleLoading },
 );
+const ShiftWorkspace = dynamic(
+  () =>
+    import("@/components/shift-workspace").then(
+      (module) => module.ShiftWorkspace,
+    ),
+  { loading: moduleLoading },
+);
+const RecognitionWorkspace = dynamic(
+  () =>
+    import("@/components/recognition-workspace").then(
+      (module) => module.RecognitionWorkspace,
+    ),
+  { loading: moduleLoading },
+);
 const LeaveWorkspace = dynamic(
   () =>
     import("@/components/leave-workspace").then(
@@ -959,6 +973,10 @@ export function AppShell({
             <EmployeesWorkspace user={user} />
           ) : view === "Attendance" ? (
             <AttendanceWorkspace user={user} />
+          ) : view === "Shift Management" ? (
+            <ShiftWorkspace user={user} />
+          ) : view === "Employee Recognition" ? (
+            <RecognitionWorkspace user={user} />
           ) : view === "Leave Management" ? (
             <LeaveWorkspace user={user} />
           ) : view === "Payroll" && user.role === "EMPLOYEE" ? (

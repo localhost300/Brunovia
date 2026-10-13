@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, CalendarDays, Clock3, Loader2, Trophy, Users } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 
 type Employee = { id: string; department?: { name: string } | null };
@@ -90,10 +90,10 @@ export function LiveDashboard() {
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
         <ChartCard title="Seven-day attendance" empty={data.attendance.length === 0} emptyText="No attendance has been recorded in the last seven days.">
-          <ResponsiveContainer width="100%" height={260}><BarChart data={attendanceChart}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="day" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="present" name="Present" fill="#047857" radius={[5, 5, 0, 0]} /><Bar dataKey="late" name="Late" fill="#dc2626" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={260}><AreaChart data={attendanceChart} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}><defs><linearGradient id="presentFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#059669" stopOpacity={0.35} /><stop offset="100%" stopColor="#059669" stopOpacity={0.02} /></linearGradient><linearGradient id="lateFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={0.25} /><stop offset="100%" stopColor="#ef4444" stopOpacity={0.01} /></linearGradient></defs><CartesianGrid strokeDasharray="4 6" vertical={false} stroke="#e4e4e7" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} /><YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} /><Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e4e4e7", boxShadow: "0 10px 30px rgba(0,0,0,.08)" }} /><Area type="monotone" dataKey="present" name="Present" stroke="#059669" strokeWidth={3} fill="url(#presentFill)" /><Area type="monotone" dataKey="late" name="Late" stroke="#ef4444" strokeWidth={2} fill="url(#lateFill)" /></AreaChart></ResponsiveContainer>
         </ChartCard>
         <ChartCard title="Employees by department" empty={departmentChart.length === 0} emptyText="No employees or departments are available yet.">
-          <ResponsiveContainer width="100%" height={260}><BarChart data={departmentChart} layout="vertical" margin={{ left: 18 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="department" width={100} /><Tooltip /><Bar dataKey="employees" name="Employees" fill="#0f766e" radius={[0, 5, 5, 0]} /></BarChart></ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={260}><BarChart data={departmentChart} layout="vertical" margin={{ left: 18, right: 12 }}><defs><linearGradient id="departmentFill" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#0f766e" /><stop offset="100%" stopColor="#34d399" /></linearGradient></defs><CartesianGrid strokeDasharray="4 6" horizontal={false} stroke="#e4e4e7" /><XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} /><YAxis type="category" dataKey="department" width={100} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#71717a" }} /><Tooltip cursor={{ fill: "rgba(16,185,129,.06)" }} contentStyle={{ borderRadius: 12, border: "1px solid #e4e4e7", boxShadow: "0 10px 30px rgba(0,0,0,.08)" }} /><Bar dataKey="employees" name="Employees" fill="url(#departmentFill)" radius={[0, 8, 8, 0]} barSize={22} /></BarChart></ResponsiveContainer>
         </ChartCard>
       </div>
       <section className="mt-5 rounded-xl border bg-white p-5 dark:bg-zinc-950">
@@ -105,5 +105,5 @@ export function LiveDashboard() {
 }
 
 function ChartCard({ title, empty, emptyText, children }: { title: string; empty: boolean; emptyText: string; children: React.ReactNode }) {
-  return <section className="relative rounded-xl border bg-white p-5 dark:bg-zinc-950"><div className="mb-4 flex items-center gap-2"><BarChart3 size={18} className="text-emerald-700" /><h2 className="font-semibold">{title}</h2></div>{children}{empty && <div className="pointer-events-none absolute inset-x-5 bottom-5 top-14 grid place-items-center rounded-lg bg-white/80 px-6 text-center text-sm text-zinc-500 backdrop-blur-[1px] dark:bg-zinc-950/80">{emptyText}</div>}</section>;
+  return <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-white via-white to-emerald-50/50 p-5 shadow-sm dark:from-zinc-950 dark:via-zinc-950 dark:to-emerald-950/20"><div className="mb-4 flex items-center gap-2"><span className="grid size-9 place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950"><BarChart3 size={17} /></span><h2 className="font-semibold">{title}</h2></div>{children}{empty && <div className="pointer-events-none absolute inset-x-5 bottom-5 top-16 grid place-items-center rounded-xl bg-white/75 px-6 text-center text-sm text-zinc-500 backdrop-blur-sm dark:bg-zinc-950/75">{emptyText}</div>}</section>;
 }
