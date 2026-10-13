@@ -22,6 +22,11 @@ Deno.serve(async (request) => {
     if (authError || !auth.user) throw new Error("Authentication required");
     const { data: profile } = await caller.from("users").select("role,current_organization_id").eq("id", auth.user.id).single();
     if (profile?.role !== "SUPER_ADMIN" && profile?.role !== "HR_MANAGER") throw new Error("Only HR administrators can invite employees");
+    const { employeeId, redirectTo } = await request.json();
+    if (!employeeId) throw new Error("Select an employee before sending the invitation");
+    const { data: employee, error: employeeError } = await admin.from("employees").select("id,email,first_name,last_name,user_id,organization_id").eq("id", employeeId).is("deleted_at", null).single();
+    if (employeeError) throw employeeError;
+    if (employee.user_id) throw new Error("This employee already has a login account");
     let organizationId = profile.current_organization_id as string | null;
     if (!organizationId) {
       const { data: membership, error: membershipLookupError } = await admin.from("organization_memberships").select("organization_id").eq("user_id", auth.user.id).eq("status", "ACTIVE").limit(1).maybeSingle();
@@ -29,19 +34,18 @@ Deno.serve(async (request) => {
       organizationId = membership?.organization_id ?? null;
     }
     if (!organizationId) {
-      const { data: organizations, error: organizationError } = await admin.from("organizations").select("id").eq("status", "ACTIVE").order("created_at").limit(2);
-      if (organizationError) throw organizationError;
-      if (organizations.length !== 1) throw new Error("Your account is not assigned to an active organization");
-      organizationId = organizations[0].id;
+      organizationId = employee.organization_id;
       const { error: repairProfileError } = await admin.from("users").update({ current_organization_id: organizationId, updated_at: new Date().toISOString() }).eq("id", auth.user.id);
       if (repairProfileError) throw repairProfileError;
       const { error: repairMembershipError } = await admin.from("organization_memberships").upsert({ organization_id: organizationId, user_id: auth.user.id, role: profile.role, status: "ACTIVE", joined_at: new Date().toISOString() }, { onConflict: "organization_id,user_id" });
       if (repairMembershipError) throw repairMembershipError;
     }
-    const { employeeId, redirectTo } = await request.json();
-    const { data: employee, error: employeeError } = await admin.from("employees").select("id,email,first_name,last_name,user_id,organization_id").eq("id", employeeId).eq("organization_id", organizationId).is("deleted_at", null).single();
-    if (employeeError) throw employeeError;
-    if (employee.user_id) throw new Error("This employee already has a login account");
+    if (organizationId !== employee.organization_id) {
+      const { data: matchingMembership, error: matchingMembershipError } = await admin.from("organization_memberships").select("organization_id").eq("organization_id", employee.organization_id).eq("user_id", auth.user.id).eq("status", "ACTIVE").maybeSingle();
+      if (matchingMembershipError) throw matchingMembershipError;
+      if (!matchingMembership) throw new Error("You do not have access to this employee's organization");
+      organizationId = employee.organization_id;
+    }
     const destination = Deno.env.get("APP_URL") ?? String(redirectTo ?? "http://localhost:3000/?setup=password");
     const normalizedEmail = employee.email.toLowerCase();
     const { data: pendingInvitation, error: pendingLookupError } = await admin.from("organization_invitations").select("id").eq("organization_id", organizationId).ilike("email", normalizedEmail).eq("status", "PENDING").maybeSingle();
