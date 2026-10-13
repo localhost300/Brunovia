@@ -44,6 +44,11 @@ type PayrollRow = {
   tax: number;
   pension: number;
   penalty_fee: number;
+  unpaid_leave_deduction: number;
+  calculation_inputs: {
+    missed_clock_out_days?: number;
+    missed_clock_out_deduction?: number;
+  } | null;
   net_pay: number;
   payslip_path: string | null;
   employees?: {
@@ -94,6 +99,8 @@ const demoRows: PayrollRow[] = [
     tax: demoCalculation.tax,
     pension: demoCalculation.pension,
     penalty_fee: 0,
+    unpaid_leave_deduction: 0,
+    calculation_inputs: null,
     net_pay: demoCalculation.netPay,
     payslip_path: null,
     employees: {
@@ -150,7 +157,7 @@ export function PayrollWorkspace() {
           client
             .from("payroll")
             .select(
-              "id,employee_id,period,basic_salary,allowances,deductions,bonuses,overtime,tax,pension,penalty_fee,net_pay,payslip_path,employees(employee_id,first_name,last_name)",
+              "id,employee_id,period,basic_salary,allowances,deductions,bonuses,overtime,tax,pension,penalty_fee,unpaid_leave_deduction,calculation_inputs,net_pay,payslip_path,employees(employee_id,first_name,last_name)",
             )
             .eq("period", start)
             .order("created_at"),
@@ -512,7 +519,7 @@ export function PayrollWorkspace() {
                       "Overtime",
                       "Tax",
                       "Pension",
-                      "Other deductions",
+                      "Salary deductions",
                       "Net pay",
                       "Actions",
                     ].map((heading) => (
@@ -541,6 +548,21 @@ export function PayrollWorkspace() {
                             -4,
                           ) ?? "----"}
                         </p>
+                        {Number(
+                          row.calculation_inputs?.missed_clock_out_days ?? 0,
+                        ) > 0 && (
+                          <p className="mt-1 text-[11px] text-red-600">
+                            {Number(
+                              row.calculation_inputs?.missed_clock_out_days,
+                            )} missed clock-out
+                            {Number(
+                              row.calculation_inputs?.missed_clock_out_days,
+                            ) === 1
+                              ? ""
+                              : "s"}{" "}
+                            · {money(Number(row.calculation_inputs?.missed_clock_out_deduction ?? 0))} deducted
+                          </p>
+                        )}
                       </td>
                       {[
                         row.basic_salary,
@@ -721,7 +743,9 @@ function AdjustmentDialog({
                 });
               if (error) throw error;
             }
-            toast.success("Adjustment recorded for payroll recalculation");
+            toast.success(
+              "Deduction saved and reflected in the payroll totals",
+            );
             await onSaved();
           } catch (error) {
             toast.error(
