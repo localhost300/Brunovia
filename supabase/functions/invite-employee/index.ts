@@ -16,6 +16,7 @@ Deno.serve(async (request) => {
     const url = Deno.env.get("SUPABASE_URL")!;
     const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
     const caller = createClient(url, anon, { global: { headers: { Authorization: authorization } } });
     const { data: auth, error: authError } = await caller.auth.getUser();
     if (authError || !auth.user) throw new Error("Authentication required");
@@ -23,20 +24,32 @@ Deno.serve(async (request) => {
     if (profile?.role !== "SUPER_ADMIN" && profile?.role !== "HR_MANAGER") throw new Error("Only HR administrators can invite employees");
     let organizationId = profile.current_organization_id as string | null;
     if (!organizationId) {
-      const { data: membership, error: membershipLookupError } = await caller.from("organization_memberships").select("organization_id").eq("user_id", auth.user.id).eq("status", "ACTIVE").limit(1).maybeSingle();
+      const { data: membership, error: membershipLookupError } = await admin.from("organization_memberships").select("organization_id").eq("user_id", auth.user.id).eq("status", "ACTIVE").limit(1).maybeSingle();
       if (membershipLookupError) throw membershipLookupError;
       organizationId = membership?.organization_id ?? null;
     }
-    if (!organizationId) throw new Error("Your account is not assigned to an active organization");
+    if (!organizationId) {
+      const { data: organizations, error: organizationError } = await admin.from("organizations").select("id").eq("status", "ACTIVE").order("created_at").limit(2);
+      if (organizationError) throw organizationError;
+      if (organizations.length !== 1) throw new Error("Your account is not assigned to an active organization");
+      organizationId = organizations[0].id;
+      const { error: repairProfileError } = await admin.from("users").update({ current_organization_id: organizationId, updated_at: new Date().toISOString() }).eq("id", auth.user.id);
+      if (repairProfileError) throw repairProfileError;
+      const { error: repairMembershipError } = await admin.from("organization_memberships").upsert({ organization_id: organizationId, user_id: auth.user.id, role: profile.role, status: "ACTIVE", joined_at: new Date().toISOString() }, { onConflict: "organization_id,user_id" });
+      if (repairMembershipError) throw repairMembershipError;
+    }
     const { employeeId, redirectTo } = await request.json();
-    const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
     const { data: employee, error: employeeError } = await admin.from("employees").select("id,email,first_name,last_name,user_id,organization_id").eq("id", employeeId).eq("organization_id", organizationId).is("deleted_at", null).single();
     if (employeeError) throw employeeError;
     if (employee.user_id) throw new Error("This employee already has a login account");
-    const { error: invitationError } = await caller.rpc("invite_employee_member", { p_email: employee.email });
-    if (invitationError) throw invitationError;
     const destination = Deno.env.get("APP_URL") ?? String(redirectTo ?? "http://localhost:3000/?setup=password");
     const normalizedEmail = employee.email.toLowerCase();
+    const { data: pendingInvitation, error: pendingLookupError } = await admin.from("organization_invitations").select("id").eq("organization_id", organizationId).ilike("email", normalizedEmail).eq("status", "PENDING").maybeSingle();
+    if (pendingLookupError) throw pendingLookupError;
+    const invitationWrite = pendingInvitation
+      ? await admin.from("organization_invitations").update({ role: "EMPLOYEE", invited_by: auth.user.id, expires_at: new Date(Date.now() + 7 * 86400000).toISOString() }).eq("id", pendingInvitation.id)
+      : await admin.from("organization_invitations").insert({ organization_id: organizationId, email: normalizedEmail, role: "EMPLOYEE", invited_by: auth.user.id });
+    if (invitationWrite.error) throw invitationWrite.error;
     const { data: authUsers, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
     if (listError) throw listError;
     let authUser = authUsers.users.find((item) => item.email?.toLowerCase() === normalizedEmail) ?? null;
