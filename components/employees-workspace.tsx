@@ -835,7 +835,17 @@ function EmployeeProfile({
       { body: { employeeId: employee.id, redirectTo } },
     );
     setInviting(false);
-    if (error) return toast.error(error.message);
+    if (error) {
+      let message = error.message;
+      const context = (error as { context?: Response }).context;
+      if (context) {
+        const payload = (await context.clone().json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (payload?.error) message = payload.error;
+      }
+      return toast.error(message);
+    }
     if (data?.error) return toast.error(String(data.error));
     setInvitationSent(true);
     toast.success(`Login invitation sent to ${employee.email}`);

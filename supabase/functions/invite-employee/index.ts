@@ -20,13 +20,14 @@ Deno.serve(async (request) => {
     const { data: employee, error: employeeError } = await admin.from("employees").select("id,email,first_name,last_name,user_id,organization_id").eq("id", employeeId).eq("organization_id", profile.current_organization_id).is("deleted_at", null).single();
     if (employeeError) throw employeeError;
     if (employee.user_id) throw new Error("This employee already has a login account");
-    const { error: invitationError } = await caller.rpc("invite_organization_member", { p_email: employee.email, p_role: "EMPLOYEE" });
+    const { error: invitationError } = await caller.rpc("invite_employee_member", { p_email: employee.email });
     if (invitationError) throw invitationError;
     const destination = Deno.env.get("APP_URL") ?? String(redirectTo ?? "http://localhost:3000/?setup=password");
     const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(employee.email, { data: { full_name: `${employee.first_name} ${employee.last_name}`, employee_id: employee.id }, redirectTo: destination });
     if (inviteError) throw inviteError;
     return Response.json({ invited: true, email: employee.email }, { headers: cors });
   } catch (error) {
+    console.error("invite-employee failed", error);
     return Response.json({ error: error instanceof Error ? error.message : "Invitation failed" }, { status: 400, headers: cors });
   }
 });
