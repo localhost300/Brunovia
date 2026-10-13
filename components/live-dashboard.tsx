@@ -5,7 +5,7 @@ import { BarChart3, CalendarDays, Clock3, Loader2, Trophy, Users } from "lucide-
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 
-type Employee = { id: string; departments?: { name: string } | null };
+type Employee = { id: string; department?: { name: string } | null };
 type Attendance = { work_date: string; status: string };
 type Winner = { first_name: string; last_name: string; position: string };
 type DashboardData = {
@@ -27,7 +27,7 @@ export function LiveDashboard() {
       const start = new Date();
       start.setDate(start.getDate() - 6);
       const [employees, attendance, leave, election] = await Promise.all([
-        client.from("employees").select("id,departments(name)").is("deleted_at", null).eq("status", "ACTIVE"),
+        client.from("employees").select("id,department:departments!employees_department_id_fkey(name)").is("deleted_at", null).eq("status", "ACTIVE"),
         client.from("attendance").select("work_date,status").gte("work_date", dayKey(start)).lte("work_date", dayKey(new Date())),
         client.from("leave_requests").select("id", { count: "exact", head: true }).in("status", ["PENDING_MANAGER", "PENDING_HR"]),
         client.from("recognition_elections").select("award_month,winner_employee_id").eq("status", "PUBLISHED").not("winner_employee_id", "is", null).order("award_month", { ascending: false }).limit(1).maybeSingle(),
@@ -64,7 +64,7 @@ export function LiveDashboard() {
   const departmentChart = useMemo(() => {
     const totals = new Map<string, number>();
     for (const employee of data?.employees ?? []) {
-      const name = employee.departments?.name ?? "Unassigned";
+      const name = employee.department?.name ?? "Unassigned";
       totals.set(name, (totals.get(name) ?? 0) + 1);
     }
     return [...totals].map(([department, employees]) => ({ department, employees }));
