@@ -237,6 +237,10 @@ namespace Brunovia.ZKTecoGateway
             Uri uri;
             if (String.IsNullOrWhiteSpace(origin) || !Uri.TryCreate(origin, UriKind.Absolute, out uri)) return false;
             if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return false;
+            if (uri.Scheme == Uri.UriSchemeHttps &&
+                (String.Equals(uri.Host, "brunovia.xyz", StringComparison.OrdinalIgnoreCase) ||
+                 String.Equals(uri.Host, "www.brunovia.xyz", StringComparison.OrdinalIgnoreCase)))
+                return true;
             if (uri.IsLoopback || String.Equals(uri.Host, Environment.MachineName, StringComparison.OrdinalIgnoreCase)) return true;
             IPAddress originAddress;
             if (!IPAddress.TryParse(uri.Host, out originAddress)) return false;

@@ -19,6 +19,7 @@ Configure the web app:
 NEXT_PUBLIC_BIOMETRIC_GATEWAY_URL=http://127.0.0.1:8787
 ```
 
-The HTTP loopback endpoint is suitable for local development. A remotely hosted
-HTTPS Brunovia deployment requires a trusted local HTTPS certificate or a native
-companion bridge to avoid browser mixed-content blocking.
+The gateway permits local development origins and the production origins
+`https://brunovia.xyz` and `https://www.brunovia.xyz`. It also answers Chromium's
+private-network preflight. Keep the gateway bound to loopback so it is not
+reachable from other computers on the network.
