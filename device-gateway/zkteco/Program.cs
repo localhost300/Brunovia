@@ -76,8 +76,10 @@ namespace Brunovia.ZKTecoGateway
                     string body;
                     using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding)) body = reader.ReadToEnd();
                     var request = Json.Deserialize<CaptureRequest>(body);
-                    if (request == null || String.IsNullOrWhiteSpace(request.employeeId) || (request.purpose != "ENROLL" && request.purpose != "VERIFY"))
-                        throw new ArgumentException("employeeId and a valid purpose are required");
+                    if (request == null ||
+                        (request.purpose != "ENROLL" && request.purpose != "VERIFY" && request.purpose != "IDENTIFY") ||
+                        (request.purpose != "IDENTIFY" && String.IsNullOrWhiteSpace(request.employeeId)))
+                        throw new ArgumentException("A valid purpose and employeeId for enrollment or verification are required");
                     object result;
                     lock (ScannerLock) result = Capture(request);
                     Respond(context, 200, result);
@@ -135,7 +137,7 @@ namespace Brunovia.ZKTecoGateway
                     confidence = 100;
                     SetProgress(request.employeeId, "COMPLETED", 3, "Fingerprint enrollment completed");
                 }
-                else
+                else if (request.purpose == "VERIFY")
                 {
                     var stored = LoadTemplate(request.employeeId);
                     if (stored == null) throw new InvalidOperationException("No fingerprint is enrolled for this employee");
@@ -147,13 +149,34 @@ namespace Brunovia.ZKTecoGateway
                     finalTemplate = stored;
                     SetProgress(request.employeeId, "COMPLETED", 1, "Fingerprint verified successfully");
                 }
+                else
+                {
+                    var templates = ReadStore();
+                    if (templates.Count == 0) throw new InvalidOperationException("No employee fingerprints are enrolled on this scanner computer");
+                    SetProgress("attendance", "PLACE_FINGER", 1, "Place an enrolled finger flat on the scanner");
+                    var captured = ReadFinger(device, image);
+                    SetProgress("attendance", "PROCESSING", 1, "Fingerprint received. Identifying employee");
+                    string matchedEmployee = null;
+                    foreach (var entry in templates)
+                    {
+                        var stored = ProtectedData.Unprotect(Convert.FromBase64String(entry.Value), Encoding.UTF8.GetBytes("Brunovia-ZKTeco-v1"), DataProtectionScope.CurrentUser);
+                        var score = zkfp2.DBMatch(database, captured, stored);
+                        if (score > confidence) { confidence = score; matchedEmployee = entry.Key; }
+                    }
+                    if (String.IsNullOrWhiteSpace(matchedEmployee) || confidence <= 0)
+                        throw new InvalidOperationException("Fingerprint is not enrolled for an active employee");
+                    request.employeeId = matchedEmployee;
+                    finalTemplate = captured;
+                    SetProgress("attendance", "COMPLETED", 1, "Employee identified successfully");
+                }
 
                 return new {
                     captureId = Guid.NewGuid().ToString(),
                     templateReference = "zkteco:slk20r:" + request.employeeId,
                     confidence = confidence,
                     deviceId = String.IsNullOrWhiteSpace(request.deviceId) ? "SLK20R-0" : request.deviceId,
-                    capturedAt = DateTime.UtcNow.ToString("o")
+                    capturedAt = DateTime.UtcNow.ToString("o"),
+                    employeeId = request.employeeId
                 };
             }
             finally

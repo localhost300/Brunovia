@@ -56,8 +56,8 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [shifts, setShifts] = useState<ShiftOption[]>([]);
-  const [employeeId, setEmployeeId] = useState("");
   const [shiftId, setShiftId] = useState("");
+  const [identifiedEmployeeId, setIdentifiedEmployeeId] = useState("");
   const [day, setDay] = useState(dateKey(new Date()));
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -91,9 +91,12 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
             .order("clock_in", { ascending: false }),
           client
             .from("employees")
-            .select("id,employee_id,first_name,last_name")
+            .select(
+              "id,employee_id,first_name,last_name,biometric_enrollments!inner(id,revoked_at)",
+            )
             .is("deleted_at", null)
             .eq("status", "ACTIVE")
+            .is("biometric_enrollments.revoked_at", null)
             .order("first_name"),
           client
             .from("shifts")
@@ -108,8 +111,6 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
       setRows((attendanceResult.data ?? []) as unknown as AttendanceRow[]);
       setEmployees((employeeResult.data ?? []) as EmployeeOption[]);
       setShifts((shiftResult.data ?? []) as ShiftOption[]);
-      if (!employeeId && employeeResult.data?.length === 1)
-        setEmployeeId(employeeResult.data[0].id);
       if (!shiftId && shiftResult.data?.[0]) setShiftId(shiftResult.data[0].id);
     } catch (caught) {
       setError(
@@ -118,23 +119,22 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
     } finally {
       setLoading(false);
     }
-  }, [configured, day, employeeId, shiftId]);
+  }, [configured, day, shiftId]);
   useEffect(() => {
     void load();
   }, [load]);
   useEffect(() => {
-    if (!working || !employeeId) return;
+    if (!working) return;
     const timer = window.setInterval(() => {
-      void getEnrollmentProgress(employeeId)
+      void getEnrollmentProgress("attendance")
         .then(setScanProgress)
         .catch(() => undefined);
     }, 350);
     return () => window.clearInterval(timer);
-  }, [employeeId, working]);
+  }, [working]);
 
   const clock = async () => {
-    if (!employeeId || !shiftId)
-      return toast.error("Select an employee and shift");
+    if (!shiftId) return toast.error("Select a shift");
     setWorking(true);
     setScanError(null);
     setScanProgress({
@@ -145,27 +145,34 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
     try {
       await ensureBiometricGatewayReady();
       const capture = await captureFingerprint({
-        employeeId,
-        purpose: "VERIFY",
+        purpose: "IDENTIFY",
         deviceId: "primary-attendance-device",
       });
+      const matchedEmployee = employees.find(
+        (employee) => employee.id === capture.employeeId,
+      );
+      if (!capture.employeeId || !matchedEmployee)
+        throw new Error(
+          "The fingerprint does not belong to an active Brunovia employee",
+        );
+      setIdentifiedEmployeeId(capture.employeeId);
       if (configured) {
         const { data, error: rpcError } = await createClient().rpc(
           "record_attendance_event",
           {
-            p_employee_id: employeeId,
+            p_employee_id: capture.employeeId,
             p_shift_id: shiftId,
             p_device_id: capture.deviceId,
-            p_location: "HQ · Lagos",
+            p_location: "HQ · Udo, Mbaise",
             p_capture_id: capture.captureId,
           },
         );
         if (rpcError) throw rpcError;
         toast.success(
-          String(data)
+          `${matchedEmployee.first_name} ${matchedEmployee.last_name}: ${String(data)
             .replaceAll("_", " ")
             .toLowerCase()
-            .replace(/^./, (letter) => letter.toUpperCase()),
+            .replace(/^./, (letter) => letter.toUpperCase())}`,
         );
         await load();
       } else throw new Error("Supabase is not configured");
@@ -265,20 +272,7 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
       </div>
       <section className="rounded-xl border bg-white p-4 dark:bg-zinc-950">
         {privileged && (
-          <div className="mb-4 grid gap-3 border-b pb-4 md:grid-cols-[1fr_1fr_auto]">
-            <select
-              aria-label="Employee"
-              value={employeeId}
-              onChange={(e) => setEmployeeId(e.target.value)}
-              className="input"
-            >
-              <option value="">Select employee</option>
-              {employees.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.first_name} {item.last_name} · {item.employee_id}
-                </option>
-              ))}
-            </select>
+          <div className="mb-4 grid gap-3 border-b pb-4 md:grid-cols-[1fr_auto]">
             <select
               aria-label="Shift"
               value={shiftId}
@@ -295,8 +289,8 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
             </select>
             <button
               onClick={() => {
-                if (!employeeId || !shiftId)
-                  return toast.error("Select an employee and shift");
+                if (!shiftId) return toast.error("Select a shift");
+                setIdentifiedEmployeeId("");
                 setScanProgress({
                   stage: "IDLE",
                   scan: 0,
@@ -404,8 +398,9 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
               <div>
                 <h2 className="text-lg font-semibold">Verify attendance</h2>
                 <p className="text-sm text-zinc-500">
-                  {employees.find((item) => item.id === employeeId)?.first_name}{" "}
-                  {employees.find((item) => item.id === employeeId)?.last_name}
+                  {identifiedEmployeeId
+                    ? `${employees.find((item) => item.id === identifiedEmployeeId)?.first_name ?? ""} ${employees.find((item) => item.id === identifiedEmployeeId)?.last_name ?? ""}`.trim()
+                    : "The enrolled fingerprint will identify the employee"}
                 </p>
               </div>
               <button

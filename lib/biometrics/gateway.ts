@@ -1,5 +1,5 @@
 export type BiometricVendor = "ZKTECO" | "SUPREMA" | "HIKVISION";
-export type CapturePurpose = "ENROLL" | "VERIFY";
+export type CapturePurpose = "ENROLL" | "VERIFY" | "IDENTIFY";
 export interface CaptureRequest {
   employeeId?: string;
   purpose: CapturePurpose;
@@ -11,6 +11,7 @@ export interface CaptureResult {
   confidence: number;
   deviceId: string;
   capturedAt: string;
+  employeeId?: string;
 }
 export interface EnrollmentProgress {
   stage: "IDLE" | "PLACE_FINGER" | "LIFT_FINGER" | "PROCESSING" | "COMPLETED";

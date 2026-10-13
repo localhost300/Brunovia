@@ -23,8 +23,35 @@ Deno.serve(async (request) => {
     const { error: invitationError } = await caller.rpc("invite_employee_member", { p_email: employee.email });
     if (invitationError) throw invitationError;
     const destination = Deno.env.get("APP_URL") ?? String(redirectTo ?? "http://localhost:3000/?setup=password");
-    const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(employee.email, { data: { full_name: `${employee.first_name} ${employee.last_name}`, employee_id: employee.id }, redirectTo: destination });
+    const { data: invitedAuth, error: inviteError } = await admin.auth.admin.inviteUserByEmail(employee.email, { data: { full_name: `${employee.first_name} ${employee.last_name}`, employee_id: employee.id }, redirectTo: destination });
     if (inviteError) throw inviteError;
+    if (!invitedAuth.user) throw new Error("The login account was not created");
+    const userId = invitedAuth.user.id;
+    const { error: profileLinkError } = await admin.from("users").update({
+      role: "EMPLOYEE",
+      full_name: `${employee.first_name} ${employee.last_name}`,
+      email: employee.email.toLowerCase(),
+      current_organization_id: profile.current_organization_id,
+    }).eq("id", userId);
+    if (profileLinkError) throw profileLinkError;
+    const { error: membershipError } = await admin.from("organization_memberships").upsert({
+      organization_id: profile.current_organization_id,
+      user_id: userId,
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      joined_at: new Date().toISOString(),
+    }, { onConflict: "organization_id,user_id" });
+    if (membershipError) throw membershipError;
+    const { error: employeeLinkError } = await admin.from("employees").update({
+      user_id: userId,
+      updated_at: new Date().toISOString(),
+    }).eq("id", employee.id).is("user_id", null);
+    if (employeeLinkError) throw employeeLinkError;
+    const { error: acceptedError } = await admin.from("organization_invitations").update({
+      status: "ACCEPTED",
+      accepted_at: new Date().toISOString(),
+    }).eq("organization_id", profile.current_organization_id).ilike("email", employee.email).eq("status", "PENDING");
+    if (acceptedError) throw acceptedError;
     return Response.json({ invited: true, email: employee.email }, { headers: cors });
   } catch (error) {
     console.error("invite-employee failed", error);
