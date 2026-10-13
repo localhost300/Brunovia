@@ -1,0 +1,14 @@
+node_modules
+.next
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+output
+tmp
+playwright-report
+test-results
+artifacts/backups
+device-gateway/**/bin
+supabase/.temp
+/NUL

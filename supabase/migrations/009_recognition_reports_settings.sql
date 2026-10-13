@@ -1,0 +1,18 @@
+create table public.recognitions(
+  id uuid primary key default gen_random_uuid(),employee_id uuid not null references public.employees(id),recognized_by uuid not null references public.users(id),category text not null,achievement text not null,visibility text not null default 'COMPANY',recognition_date date not null default current_date,points integer not null default 0 check(points>=0),created_at timestamptz not null default now()
+);
+create table public.employee_awards(
+  id uuid primary key default gen_random_uuid(),employee_id uuid not null references public.employees(id),award_type text not null,award_month date not null,citation text not null,attendance_score numeric(5,2),performance_score numeric(5,2),recommendation_score numeric(5,2),selected_by uuid not null references public.users(id),published_at timestamptz,created_at timestamptz not null default now(),unique(award_type,award_month)
+);
+create table public.report_exports(
+  id uuid primary key default gen_random_uuid(),name text not null,report_type text not null,date_from date,date_to date,department_id uuid references public.departments(id),format text not null check(format in ('PDF','EXCEL','CSV')),delivery text not null default 'DOWNLOAD',storage_path text,status text not null default 'QUEUED',created_by uuid not null references public.users(id),created_at timestamptz not null default now(),completed_at timestamptz
+);
+create table public.organization_settings(
+  id boolean primary key default true check(id),organization_name text not null,legal_name text,timezone text not null default 'Africa/Lagos',currency text not null default 'NGN',work_week_start smallint not null default 1 check(work_week_start between 0 and 6),hr_email text,settings jsonb not null default '{}',updated_by uuid references public.users(id),updated_at timestamptz not null default now()
+);
+create index recognitions_employee_date_idx on public.recognitions(employee_id,recognition_date desc);create index reports_creator_idx on public.report_exports(created_by,created_at desc);
+alter table public.recognitions enable row level security;alter table public.employee_awards enable row level security;alter table public.report_exports enable row level security;alter table public.organization_settings enable row level security;
+create policy "staff view recognition" on public.recognitions for select to authenticated using(true);create policy "staff create recognition" on public.recognitions for insert to authenticated with check(recognized_by=auth.uid());
+create policy "staff view awards" on public.employee_awards for select to authenticated using(published_at is not null or public.current_role() in ('SUPER_ADMIN','HR_MANAGER'));create policy "hr manages awards" on public.employee_awards for all to authenticated using(public.current_role() in ('SUPER_ADMIN','HR_MANAGER')) with check(public.current_role() in ('SUPER_ADMIN','HR_MANAGER'));
+create policy "managers view reports" on public.report_exports for select to authenticated using(created_by=auth.uid() or public.current_role() in ('SUPER_ADMIN','HR_MANAGER'));create policy "managers create reports" on public.report_exports for insert to authenticated with check(public.current_role() in ('SUPER_ADMIN','HR_MANAGER','MANAGER') and created_by=auth.uid());
+create policy "staff view organization settings" on public.organization_settings for select to authenticated using(true);create policy "admins manage organization settings" on public.organization_settings for all to authenticated using(public.current_role() in ('SUPER_ADMIN','HR_MANAGER')) with check(public.current_role() in ('SUPER_ADMIN','HR_MANAGER'));

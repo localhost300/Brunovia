@@ -1,0 +1,26 @@
+name: Release candidate
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -- --project=chromium
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-candidate-${{ github.sha }}
+          path: |
+            .next/
+            supabase/migrations/
+            supabase/functions/
+          retention-days: 30
