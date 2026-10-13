@@ -43,6 +43,10 @@ type EmployeeRow = {
   employment_date: string;
   status: string;
   avatar_url: string | null;
+  compensation_profile_id?: string | null;
+  basic_salary?: number;
+  bank_name?: string | null;
+  bank_account_number?: string | null;
   department?: { name: string } | null;
   manager?: { first_name: string; last_name: string } | null;
 };
@@ -70,6 +74,12 @@ const employeeSchema = z.object({
   employment_type: z.enum(["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"]),
   employment_date: z.string().date(),
   status: z.enum(["ACTIVE", "ON_LEAVE", "INACTIVE"]),
+  basic_salary: z.coerce.number().min(0, "Salary cannot be negative"),
+  bank_name: z.string().trim().min(2, "Bank name is required").max(120),
+  bank_account_number: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, "Account number must contain exactly 10 digits"),
 });
 type EmployeeInput = z.infer<typeof employeeSchema>;
 
@@ -102,6 +112,9 @@ function emptyInput(): EmployeeInput {
     employment_type: "FULL_TIME",
     employment_date: new Date().toISOString().slice(0, 10),
     status: "ACTIVE",
+    basic_salary: 0,
+    bank_name: "",
+    bank_account_number: "",
   } as EmployeeInput;
 }
 
@@ -171,7 +184,41 @@ export function EmployeesWorkspace({ user }: { user: AppUser }) {
         .order("last_name")
         .range(from, from + PAGE_SIZE - 1);
       if (error) throw error;
-      setEmployees((data ?? []) as unknown as EmployeeRow[]);
+      const employeeRows = (data ?? []) as unknown as EmployeeRow[];
+      const ids = employeeRows.map((item) => item.id);
+      let compensation = new Map<
+        string,
+        {
+          id: string;
+          employee_id: string;
+          basic_salary: number;
+          bank_name: string | null;
+          bank_account_number: string | null;
+        }
+      >();
+      if (ids.length) {
+        const { data: profiles, error: profileError } = await createClient()
+          .from("payroll_compensation_profiles")
+          .select("id,employee_id,basic_salary,bank_name,bank_account_number")
+          .in("employee_id", ids)
+          .is("effective_to", null);
+        if (profileError) throw profileError;
+        compensation = new Map(
+          (profiles ?? []).map((profile) => [profile.employee_id, profile]),
+        );
+      }
+      setEmployees(
+        employeeRows.map((employee) => {
+          const profile = compensation.get(employee.id);
+          return {
+            ...employee,
+            compensation_profile_id: profile?.id ?? null,
+            basic_salary: Number(profile?.basic_salary ?? 0),
+            bank_name: profile?.bank_name ?? null,
+            bank_account_number: profile?.bank_account_number ?? null,
+          };
+        }),
+      );
       setTotal(count ?? 0);
     } catch (error) {
       setLoadError(
@@ -214,8 +261,15 @@ export function EmployeesWorkspace({ user }: { user: AppUser }) {
       throw new Error(
         parsed.error.issues[0]?.message ?? "Check the employee details",
       );
-    const { emergency_name, emergency_phone, employee_id, ...fields } =
-      parsed.data;
+    const {
+      emergency_name,
+      emergency_phone,
+      employee_id,
+      basic_salary,
+      bank_name,
+      bank_account_number,
+      ...fields
+    } = parsed.data;
     const payload = {
       ...fields,
       ...(employee ? { employee_id } : {}),
@@ -234,6 +288,23 @@ export function EmployeesWorkspace({ user }: { user: AppUser }) {
             .single()
         : await client.from("employees").insert(payload).select("id").single();
       if (result.error) throw result.error;
+      const savedEmployeeId = employee?.id ?? result.data.id;
+      const compensationPayload = {
+        employee_id: savedEmployeeId,
+        basic_salary,
+        bank_name,
+        bank_account_number,
+      };
+      const compensationResult = employee?.compensation_profile_id
+        ? await client
+            .from("payroll_compensation_profiles")
+            .update(compensationPayload)
+            .eq("id", employee.compensation_profile_id)
+        : await client.from("payroll_compensation_profiles").insert({
+            ...compensationPayload,
+            effective_from: fields.employment_date,
+          });
+      if (compensationResult.error) throw compensationResult.error;
       await refresh();
     } else throw new Error("Supabase is not configured");
   };
@@ -513,6 +584,9 @@ function EmployeeForm({
           employment_type: employee.employment_type,
           employment_date: employee.employment_date,
           status: employee.status as EmployeeInput["status"],
+          basic_salary: employee.basic_salary ?? 0,
+          bank_name: employee.bank_name ?? "",
+          bank_account_number: employee.bank_account_number ?? "",
         }
       : emptyInput(),
   );
@@ -611,6 +685,49 @@ function EmployeeForm({
                 value={values.emergency_phone}
                 onChange={(e) => update("emergency_phone", e.target.value)}
                 className="input"
+              />
+            </Field>
+          </div>
+        </FormCard>
+        <FormCard title="Payroll & bank details">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Monthly basic salary (NGN)">
+              <input
+                required
+                type="number"
+                min="0"
+                step="100"
+                value={values.basic_salary}
+                onChange={(e) => update("basic_salary", e.target.value)}
+                className="input"
+              />
+            </Field>
+            <Field label="Bank name">
+              <input
+                required
+                value={values.bank_name}
+                onChange={(e) => update("bank_name", e.target.value)}
+                className="input"
+                placeholder="e.g. Access Bank"
+              />
+            </Field>
+            <Field label="Account number">
+              <input
+                required
+                inputMode="numeric"
+                autoComplete="off"
+                minLength={10}
+                maxLength={10}
+                pattern="[0-9]{10}"
+                value={values.bank_account_number}
+                onChange={(e) =>
+                  update(
+                    "bank_account_number",
+                    e.target.value.replace(/\D/g, "").slice(0, 10),
+                  )
+                }
+                className="input"
+                placeholder="10-digit account number"
               />
             </Field>
           </div>
@@ -839,7 +956,10 @@ function EmployeeProfile({
       let message = error.message;
       const context = (error as { context?: Response }).context;
       if (context) {
-        const payload = (await context.clone().json().catch(() => null)) as {
+        const payload = (await context
+          .clone()
+          .json()
+          .catch(() => null)) as {
           error?: string;
         } | null;
         if (payload?.error) message = payload.error;
@@ -868,6 +988,13 @@ function EmployeeProfile({
     ["Employee ID", employee.employee_id],
     ["Email", employee.email],
     ["Phone", employee.phone || "Not provided"],
+    ["Bank name", employee.bank_name || "Not provided"],
+    [
+      "Account number",
+      employee.bank_account_number
+        ? `******${employee.bank_account_number.slice(-4)}`
+        : "Not provided",
+    ],
     ["Address", employee.address || "Not provided"],
     ["Department", employee.department?.name || "Unassigned"],
     ["Position", employee.position],
