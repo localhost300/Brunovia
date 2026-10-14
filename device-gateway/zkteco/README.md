@@ -13,6 +13,23 @@ powershell -ExecutionPolicy Bypass -File .\device-gateway\zkteco\build.ps1
 
 Health check: `http://127.0.0.1:8787/health`
 
+## Start automatically on Windows sign-in
+
+Run this once from PowerShell in the project folder to register a scheduled task
+for your current Windows account:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\device-gateway\zkteco\install-gateway-startup.ps1
+```
+
+The task launches the gateway hidden when you sign in. The gateway is stopped
+when Windows shuts down, so it will start again at the next sign-in. To remove
+automatic startup, run:
+
+```powershell
+Unregister-ScheduledTask -TaskName "Brunovia Fingerprint Gateway" -Confirm:$false
+```
+
 Configure the web app:
 
 ```text
