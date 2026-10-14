@@ -946,10 +946,9 @@ function EmployeeProfile({
   };
   const inviteEmployee = async () => {
     setInviting(true);
-    const redirectTo = `${window.location.origin}/?setup=password`;
     const { data, error } = await createClient().functions.invoke(
       "invite-employee",
-      { body: { employeeId: employee.id, redirectTo } },
+      { body: { employeeId: employee.id } },
     );
     setInviting(false);
     if (error) {
@@ -968,7 +967,7 @@ function EmployeeProfile({
     }
     if (data?.error) return toast.error(String(data.error));
     setInvitationSent(true);
-    toast.success(`Login invitation sent to ${employee.email}`);
+    toast.success(`Password setup email sent to ${employee.email}`);
   };
   if (editing)
     return (
@@ -1039,18 +1038,16 @@ function EmployeeProfile({
           {canManage && (
             <div className="flex flex-wrap gap-2 sm:ml-auto">
               <button
-                disabled={
-                  Boolean(employee.user_id) || inviting || invitationSent
-                }
+                disabled={inviting || invitationSent}
                 onClick={() => void inviteEmployee()}
                 className="rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-60"
               >
-                {employee.user_id
-                  ? "Login enabled"
-                  : invitationSent
-                    ? "Invitation sent"
-                    : inviting
-                      ? "Sending invitation…"
+                {invitationSent
+                  ? "Password email sent"
+                  : inviting
+                    ? "Sending email…"
+                    : employee.user_id
+                      ? "Send password reset email"
                       : "Send login invitation"}
               </button>
               {configured && (

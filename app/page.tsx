@@ -24,10 +24,24 @@ export default function Home({
   const currentUser = useRef<AppUser | null>(null);
   const authRevision = useRef(0);
   useEffect(() => {
+    // Capture the email link's intent before Supabase consumes its fragment.
+    const emailLinkParams = new URLSearchParams(window.location.hash.slice(1));
+    const emailLinkType = emailLinkParams.get("type");
+    const emailAccessToken = emailLinkParams.get("access_token");
+    const emailRefreshToken = emailLinkParams.get("refresh_token");
     setSettingPassword(
-      new URLSearchParams(window.location.search).get("setup") === "password",
+      new URLSearchParams(window.location.search).get("setup") === "password" ||
+        emailLinkType === "invite" ||
+        emailLinkType === "recovery",
     );
     if (!hasSupabaseConfig()) {
+      setLoading(false);
+      return;
+    }
+    if (emailLinkParams.has("error") || emailLinkParams.has("error_code")) {
+      setAuthError(
+        "This password link is invalid or has expired. Ask your administrator to send a new password reset email.",
+      );
       setLoading(false);
       return;
     }
@@ -86,6 +100,33 @@ export default function Home({
 
     const restore = async () => {
       const revision = ++authRevision.current;
+      // Admin-generated invitation/recovery links use token fragments, while
+      // the SSR browser client defaults to PKCE. Validate and import the email
+      // session explicitly; the recipient has no initiating browser verifier.
+      if (
+        (emailLinkType === "invite" || emailLinkType === "recovery") &&
+        emailAccessToken &&
+        emailRefreshToken
+      ) {
+        const { error } = await supabase.auth.setSession({
+          access_token: emailAccessToken,
+          refresh_token: emailRefreshToken,
+        });
+        if (!active) return;
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.hash = "";
+        window.history.replaceState(window.history.state, "", cleanUrl);
+        if (error) {
+          if (revision !== authRevision.current) return;
+          currentUser.current = null;
+          setUser(null);
+          setAuthError(
+            "This password link is invalid or has expired. Ask your administrator to send a new password reset email.",
+          );
+          setLoading(false);
+          return;
+        }
+      }
       const { data, error } = await supabase.auth.getUser();
       if (!active || revision !== authRevision.current) return;
       if (error && error.name !== "AuthSessionMissingError") {

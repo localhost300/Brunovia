@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { passwordSetupUrl } from "../_shared/password-redirect.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
@@ -22,31 +23,25 @@ Deno.serve(async (request) => {
     if (authError || !auth.user) throw new Error("Authentication required");
     const { data: profile } = await caller.from("users").select("role,current_organization_id").eq("id", auth.user.id).single();
     if (profile?.role !== "SUPER_ADMIN" && profile?.role !== "HR_MANAGER") throw new Error("Only HR administrators can invite employees");
-    const { employeeId, redirectTo } = await request.json();
+    const { employeeId } = await request.json();
     if (!employeeId) throw new Error("Select an employee before sending the invitation");
     const { data: employee, error: employeeError } = await admin.from("employees").select("id,email,first_name,last_name,user_id,organization_id").eq("id", employeeId).is("deleted_at", null).single();
     if (employeeError) throw employeeError;
-    if (employee.user_id) throw new Error("This employee already has a login account");
-    let organizationId = profile.current_organization_id as string | null;
-    if (!organizationId) {
-      const { data: membership, error: membershipLookupError } = await admin.from("organization_memberships").select("organization_id").eq("user_id", auth.user.id).eq("status", "ACTIVE").limit(1).maybeSingle();
-      if (membershipLookupError) throw membershipLookupError;
-      organizationId = membership?.organization_id ?? null;
+    const organizationId = employee.organization_id;
+    const { data: membership, error: membershipError } = await admin.from("organization_memberships").select("role").eq("organization_id", organizationId).eq("user_id", auth.user.id).eq("status", "ACTIVE").maybeSingle();
+    if (membershipError) throw membershipError;
+    if (!membership || !["SUPER_ADMIN", "HR_MANAGER"].includes(membership.role))
+      throw new Error("Only HR administrators in this employee's organization can send password links");
+    const destination = passwordSetupUrl(Deno.env.get("APP_URL"));
+    if (employee.user_id) {
+      const { data: linkedAccount, error: linkedError } = await admin.auth.admin.getUserById(employee.user_id);
+      if (linkedError) throw linkedError;
+      if (linkedAccount.user.email?.toLowerCase() !== employee.email.toLowerCase())
+        throw new Error("The employee email does not match their login account. Update the employee email before sending a password link.");
+      const { error: recoveryError } = await admin.auth.resetPasswordForEmail(employee.email, { redirectTo: destination });
+      if (recoveryError) throw recoveryError;
+      return Response.json({ invited: true, email: employee.email, recoveredExistingAccount: true }, { headers: cors });
     }
-    if (!organizationId) {
-      organizationId = employee.organization_id;
-      const { error: repairProfileError } = await admin.from("users").update({ current_organization_id: organizationId, updated_at: new Date().toISOString() }).eq("id", auth.user.id);
-      if (repairProfileError) throw repairProfileError;
-      const { error: repairMembershipError } = await admin.from("organization_memberships").upsert({ organization_id: organizationId, user_id: auth.user.id, role: profile.role, status: "ACTIVE", joined_at: new Date().toISOString() }, { onConflict: "organization_id,user_id" });
-      if (repairMembershipError) throw repairMembershipError;
-    }
-    if (organizationId !== employee.organization_id) {
-      const { data: matchingMembership, error: matchingMembershipError } = await admin.from("organization_memberships").select("organization_id").eq("organization_id", employee.organization_id).eq("user_id", auth.user.id).eq("status", "ACTIVE").maybeSingle();
-      if (matchingMembershipError) throw matchingMembershipError;
-      if (!matchingMembership) throw new Error("You do not have access to this employee's organization");
-      organizationId = employee.organization_id;
-    }
-    const destination = Deno.env.get("APP_URL") ?? String(redirectTo ?? "http://localhost:3000/?setup=password");
     const normalizedEmail = employee.email.toLowerCase();
     const { data: pendingInvitation, error: pendingLookupError } = await admin.from("organization_invitations").select("id").eq("organization_id", organizationId).ilike("email", normalizedEmail).eq("status", "PENDING").maybeSingle();
     if (pendingLookupError) throw pendingLookupError;
@@ -72,14 +67,14 @@ Deno.serve(async (request) => {
       current_organization_id: organizationId,
     }).eq("id", userId);
     if (profileLinkError) throw profileLinkError;
-    const { error: membershipError } = await admin.from("organization_memberships").upsert({
+    const { error: membershipWriteError } = await admin.from("organization_memberships").upsert({
       organization_id: organizationId,
       user_id: userId,
       role: "EMPLOYEE",
       status: "ACTIVE",
       joined_at: new Date().toISOString(),
     }, { onConflict: "organization_id,user_id" });
-    if (membershipError) throw membershipError;
+    if (membershipWriteError) throw membershipWriteError;
     const { error: employeeLinkError } = await admin.from("employees").update({
       user_id: userId,
       updated_at: new Date().toISOString(),

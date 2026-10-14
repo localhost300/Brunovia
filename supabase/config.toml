@@ -1,0 +1,16 @@
+project_id = "brunovia"
+
+# Only these declared Auth settings are managed here. SMTP credentials and
+# all other hosted settings remain managed in the Supabase dashboard.
+[auth]
+site_url = "https://www.brunovia.xyz"
+additional_redirect_urls = [
+  "https://www.brunovia.xyz/",
+  "https://www.brunovia.xyz/?setup=password",
+  "https://brunovia.xyz/",
+  "https://brunovia.xyz/?setup=password",
+  "https://brunovia-brunomatics-projects-180e15da.vercel.app/",
+  "https://brunovia-brunomatics-projects-180e15da.vercel.app/**",
+  "https://brunovia-*-brunomatics-projects-180e15da.vercel.app",
+  "https://brunovia-*-brunomatics-projects-180e15da.vercel.app/**",
+]
