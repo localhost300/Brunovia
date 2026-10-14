@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Login } from "@/features/auth/login";
 import { AppShell } from "@/components/app-shell";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +21,8 @@ export default function Home({
     [loading, setLoading] = useState(true),
     [authError, setAuthError] = useState<string | null>(null),
     [settingPassword, setSettingPassword] = useState(false);
+  const currentUser = useRef<AppUser | null>(null);
+  const authRevision = useRef(0);
   useEffect(() => {
     setSettingPassword(
       new URLSearchParams(window.location.search).get("setup") === "password",
@@ -33,15 +35,24 @@ export default function Home({
     const supabase = createClient();
     let active = true;
 
-    const loadProfile = async (userId: string, email = "") => {
+    const loadProfile = async (
+      userId: string,
+      email: string,
+      revision: number,
+    ) => {
+      if (!active || revision !== authRevision.current) return;
       const { data: profile, error } = await supabase
         .from("users")
         .select("full_name,role")
         .eq("id", userId)
         .single();
 
-      if (!active) return;
+      if (!active || revision !== authRevision.current) return;
       if (error) {
+        // A temporary failure during a background profile refresh must not
+        // discard the signed-in user's open workspace and unsaved form state.
+        if (currentUser.current?.id === userId) return;
+        currentUser.current = null;
         setUser(null);
         setAuthError(
           "Your account is signed in, but its Brunovia profile could not be loaded. Ask an administrator to verify the database migrations and user profile.",
@@ -52,6 +63,7 @@ export default function Home({
 
       if (allowedRoles && !allowedRoles.includes(profile.role)) {
         await supabase.auth.signOut();
+        currentUser.current = null;
         setUser(null);
         setAuthError(
           `This account does not have access to the ${portalName ?? "requested"} portal.`,
@@ -61,26 +73,30 @@ export default function Home({
       }
 
       setAuthError(null);
-      setUser({
+      const nextUser: AppUser = {
         id: userId,
         email,
         name: profile.full_name,
         role: profile.role,
-      });
+      };
+      currentUser.current = nextUser;
+      setUser(nextUser);
       setLoading(false);
     };
 
     const restore = async () => {
+      const revision = ++authRevision.current;
       const { data, error } = await supabase.auth.getUser();
-      if (!active) return;
+      if (!active || revision !== authRevision.current) return;
       if (error && error.name !== "AuthSessionMissingError") {
         setAuthError(
           "The secure session could not be verified. Please sign in again.",
         );
       }
       if (data.user) {
-        await loadProfile(data.user.id, data.user.email ?? "");
+        await loadProfile(data.user.id, data.user.email ?? "", revision);
       } else {
+        currentUser.current = null;
         setUser(null);
         setLoading(false);
       }
@@ -91,12 +107,28 @@ export default function Home({
       (event, session) => {
         if (!active || event === "INITIAL_SESSION") return;
         if (!session?.user) {
+          ++authRevision.current;
+          currentUser.current = null;
           setUser(null);
           setLoading(false);
           return;
         }
-        setLoading(true);
-        void loadProfile(session.user.id, session.user.email ?? "");
+        const sameUser = currentUser.current?.id === session.user.id;
+        // Supabase emits SIGNED_IN again on tab focus, and refreshes tokens
+        // automatically. Neither event should remount an existing workspace.
+        if (sameUser && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED"))
+          return;
+        if (event === "PASSWORD_RECOVERY") setSettingPassword(true);
+        const revision = ++authRevision.current;
+        if (!sameUser) {
+          currentUser.current = null;
+          setUser(null);
+          setLoading(true);
+        }
+        // Run Supabase queries after its auth callback has released its lock.
+        window.setTimeout(() => {
+          void loadProfile(session.user.id, session.user.email ?? "", revision);
+        }, 0);
       },
     );
 
@@ -107,13 +139,20 @@ export default function Home({
   }, [allowedRoles, portalName]);
   const signOut = async () => {
     if (hasSupabaseConfig()) await createClient().auth.signOut();
+    ++authRevision.current;
+    currentUser.current = null;
     setUser(null);
   };
   if (loading) return <PageLoading label="Loading secure workspace…" />;
   if (user && settingPassword)
     return <PasswordSetup onComplete={() => setSettingPassword(false)} />;
   return user ? (
-    <AppShell user={user} onSignOut={signOut} initialView={initialView} />
+    <AppShell
+      key={user.id}
+      user={user}
+      onSignOut={signOut}
+      initialView={initialView}
+    />
   ) : (
     <div>
       {authError && (
@@ -126,7 +165,13 @@ export default function Home({
         </div>
       )}
       <Login
-        onSuccess={setUser}
+        onSuccess={(signedInUser) => {
+          ++authRevision.current;
+          currentUser.current = signedInUser;
+          setUser(signedInUser);
+          setAuthError(null);
+          setLoading(false);
+        }}
         allowedRoles={allowedRoles}
         portalName={portalName}
       />
