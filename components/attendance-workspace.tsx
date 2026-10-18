@@ -282,11 +282,14 @@ export function AttendanceWorkspace({ user }: { user: AppUser }) {
               <option value="">Select shift</option>
               {shifts.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name} · {item.start_time.slice(0, 5)}–
-                  {item.end_time.slice(0, 5)}
+                  {item.name}
                 </option>
               ))}
             </select>
+            <p className="text-xs text-zinc-500 md:col-span-2">
+              Weekdays: 9:00 AM start with a 20-minute grace. Weekends: clock in
+              by 12:00 PM. Clock-out is available from 10:00 PM.
+            </p>
             <button
               onClick={() => {
                 if (!shiftId) return toast.error("Select a shift");

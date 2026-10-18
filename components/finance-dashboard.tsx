@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars -- Legacy report adapter retained for rollback compatibility. */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -61,13 +61,6 @@ const cashFlow = [
   { month: "Jul", income: 7.2, expense: 4.6 },
   { month: "Aug", income: 6.7, expense: 4.4 },
   { month: "Sep", income: 6.8, expense: 3.9 },
-];
-const budgets = [
-  { category: "Salaries", budget: 2400000, actual: 2180000 },
-  { category: "Rent & facilities", budget: 800000, actual: 780000 },
-  { category: "Software & IT", budget: 400000, actual: 460000 },
-  { category: "Marketing", budget: 500000, actual: 325000 },
-  { category: "Training", budget: 250000, actual: 185000 },
 ];
 const spendColors = ["#047857", "#2563eb", "#d97706", "#dc2626", "#7c3aed"];
 const money = (value: number) =>
@@ -327,7 +320,13 @@ export function FinanceDashboard({ user }: { user: AppUser }) {
           viewTransaction={setSelectedTransaction}
         />
       )}
-      {tab === "Budgets" && <Budgets />}
+      {tab === "Budgets" && (
+        <Budgets
+          user={user}
+          transactions={transactions}
+          hasDatabase={hasDatabase}
+        />
+      )}
       {tab === "Reports" && <FinanceReports transactions={transactions} />}
       {tab === "Audit trail" && (
         <AuditTrail user={user} transactions={transactions} />
@@ -725,53 +724,285 @@ function TransactionTable({
   );
 }
 
-function Budgets() {
+type BudgetCategory = { id: string; name: string };
+type BudgetRecord = {
+  id: string;
+  category_id: string;
+  period: string;
+  amount: number;
+};
+
+function Budgets({
+  user,
+  transactions,
+  hasDatabase,
+}: {
+  user: AppUser;
+  transactions: Transaction[];
+  hasDatabase: boolean;
+}) {
+  const canManage = user.role === "SUPER_ADMIN" || user.role === "HR_MANAGER";
+  const now = new Date();
+  const [period, setPeriod] = useState(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+  );
+  const [categories, setCategories] = useState<BudgetCategory[]>([]);
+  const [budgetRows, setBudgetRows] = useState<BudgetRecord[]>([]);
+  const [categoryId, setCategoryId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!hasDatabase) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const client = createClient();
+    const [categoryResult, budgetResult] = await Promise.all([
+      client
+        .from("finance_categories")
+        .select("id,name")
+        .eq("transaction_type", "EXPENSE")
+        .order("name"),
+      client
+        .from("finance_budgets")
+        .select("id,category_id,period,amount")
+        .eq("period", `${period}-01`)
+        .order("created_at"),
+    ]);
+    const error = categoryResult.error ?? budgetResult.error;
+    if (error) {
+      toast.error(`Could not load budgets: ${error.message}`);
+    } else {
+      setCategories((categoryResult.data ?? []) as BudgetCategory[]);
+      setBudgetRows(
+        (budgetResult.data ?? []).map((row) => ({
+          ...row,
+          amount: Number(row.amount),
+        })) as BudgetRecord[],
+      );
+    }
+    setLoading(false);
+  }, [hasDatabase, period]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const saveBudget = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const value = Number(amount);
+    if (!categoryId || !Number.isFinite(value) || value < 0) {
+      toast.error("Choose a category and enter a valid budget amount");
+      return;
+    }
+    setSaving(true);
+    const { error } = await createClient()
+      .from("finance_budgets")
+      .upsert(
+        {
+          category_id: categoryId,
+          period: `${period}-01`,
+          amount: value,
+          created_by: user.id,
+        },
+        { onConflict: "category_id,period" },
+      );
+    if (error) {
+      toast.error(`Budget could not be saved: ${error.message}`);
+    } else {
+      toast.success("Budget saved");
+      setAmount("");
+      await load();
+    }
+    setSaving(false);
+  };
+
+  const actualByCategory = new Map<string, number>();
+  for (const transaction of transactions) {
+    if (
+      transaction.type === "Expense" &&
+      transaction.status === "Approved" &&
+      transaction.date.startsWith(period)
+    ) {
+      actualByCategory.set(
+        transaction.category,
+        (actualByCategory.get(transaction.category) ?? 0) + transaction.amount,
+      );
+    }
+  }
+
+  const chartData = budgetRows.map((budget) => {
+    const category = categories.find((item) => item.id === budget.category_id);
+    const categoryName = category?.name ?? "Uncategorized";
+    return {
+      category: categoryName,
+      budget: budget.amount,
+      actual: actualByCategory.get(categoryName) ?? 0,
+    };
+  });
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
-      <Panel title="Budget vs actual" subtitle="September operating plan">
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={budgets} layout="vertical" margin={{ left: 25 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tickFormatter={(v) => `₦${v / 1000000}m`} />
-              <YAxis
-                type="category"
-                dataKey="category"
-                width={95}
-                tick={{ fontSize: 11 }}
-              />
-              <Tooltip formatter={(v) => money(Number(v))} />
-              <Bar dataKey="budget" fill="#d4d4d8" radius={[0, 4, 4, 0]} />
-              <Bar dataKey="actual" fill="#059669" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+    <div className="space-y-5">
+      <section className="flex flex-col justify-between gap-3 rounded-lg border bg-white p-4 dark:bg-zinc-950 sm:flex-row sm:items-end">
+        <div>
+          <h2 className="font-semibold">Monthly budgets</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            Set expense limits by category and compare them with approved spending.
+          </p>
         </div>
-      </Panel>
-      <Panel title="Budget health" subtitle="Exceptions and remaining capacity">
-        <div className="space-y-4">
-          {budgets.map((item) => {
-            const pct = Math.round((item.actual / item.budget) * 100);
-            return (
-              <div key={item.category}>
-                <div className="flex justify-between text-xs">
-                  <span className="font-medium">{item.category}</span>
-                  <span
-                    className={pct > 100 ? "text-red-600" : "text-zinc-500"}
+        <label className="text-xs font-medium">
+          Budget month
+          <input
+            type="month"
+            value={period}
+            onChange={(event) => setPeriod(event.target.value)}
+            className="input mt-1"
+          />
+        </label>
+      </section>
+
+      {!hasDatabase ? (
+        <p className="rounded-lg border p-5 text-sm text-zinc-500">
+          Connect Supabase to create and view saved budgets.
+        </p>
+      ) : (
+        <>
+          {canManage && (
+            <Panel
+              title="Set a budget"
+              subtitle="One amount per expense category and month"
+            >
+              <form
+                onSubmit={(event) => void saveBudget(event)}
+                className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+              >
+                <label className="text-xs font-medium">
+                  Expense category
+                  <select
+                    required
+                    value={categoryId}
+                    onChange={(event) => setCategoryId(event.target.value)}
+                    className="input mt-1"
                   >
-                    {pct}% used
-                  </span>
-                </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100">
-                  <div
-                    className={`h-full rounded-full ${pct > 100 ? "bg-red-500" : pct > 90 ? "bg-amber-500" : "bg-emerald-600"}`}
-                    style={{ width: `${Math.min(pct, 100)}%` }}
+                    <option value="">Choose a category</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs font-medium">
+                  Amount
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    className="input mt-1"
+                    placeholder="Enter amount in NGN"
                   />
+                </label>
+                <button
+                  type="submit"
+                  disabled={saving || loading || categories.length === 0}
+                  className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Save budget"}
+                </button>
+              </form>
+            </Panel>
+          )}
+          {!canManage && user.role === "MANAGER" && (
+            <p className="rounded-lg border p-3 text-sm text-zinc-500">
+              You can review budgets; only HR Managers and Super Admins can set them.
+            </p>
+          )}
+
+          <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
+            <Panel title="Budget vs actual" subtitle={period}>
+              {loading ? (
+                <p className="py-12 text-center text-sm text-zinc-500">
+                  Loading budgets…
+                </p>
+              ) : chartData.length === 0 ? (
+                <p className="py-12 text-center text-sm text-zinc-500">
+                  No budgets set for this month yet.
+                </p>
+              ) : (
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} layout="vertical" margin={{ left: 25 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                      <XAxis
+                        type="number"
+                        tickFormatter={(value) => `₦${Number(value) / 1000000}m`}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="category"
+                        width={95}
+                        tick={{ fontSize: 11 }}
+                      />
+                      <Tooltip formatter={(value) => money(Number(value))} />
+                      <Bar dataKey="budget" fill="#d4d4d8" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="actual" fill="#059669" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </Panel>
+              )}
+            </Panel>
+            <Panel
+              title="Budget health"
+              subtitle="Approved spend for selected month"
+            >
+              {loading ? (
+                <p className="text-sm text-zinc-500">Loading budgets…</p>
+              ) : chartData.length === 0 ? (
+                <p className="text-sm text-zinc-500">
+                  No budget figures to compare.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {chartData.map((item) => {
+                    const pct = item.budget
+                      ? Math.round((item.actual / item.budget) * 100)
+                      : 0;
+                    return (
+                      <div key={item.category}>
+                        <div className="flex justify-between gap-3 text-xs">
+                          <span className="font-medium">{item.category}</span>
+                          <span
+                            className={
+                              pct > 100 ? "text-red-600" : "text-zinc-500"
+                            }
+                          >
+                            {pct}% used
+                          </span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100">
+                          <div
+                            className={`h-full rounded-full ${pct > 100 ? "bg-red-500" : pct > 90 ? "bg-amber-500" : "bg-emerald-600"}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {money(item.actual)} of {money(item.budget)}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+          </div>
+        </>
+      )}
     </div>
   );
 }

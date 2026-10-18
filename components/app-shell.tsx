@@ -65,6 +65,7 @@ import { LiveDashboard } from "@/components/live-dashboard";
 import { RoleManagement } from "@/components/role-management";
 import { EmptyState } from "@/components/app-states";
 import { OrganizationSwitcher } from "@/components/organization-switcher";
+import { SettingsArchive } from "@/components/settings-archive";
 import { WorkforceSetup } from "@/components/workforce-setup";
 const moduleLoading = () => (
   <div className="grid min-h-72 place-items-center">
@@ -6065,7 +6066,7 @@ function Reports() {
   );
 }
 
-function SettingsPage() {
+function SettingsPage({ userRole }: { userRole: UserRole }) {
   const [tab, setTab] = useState("Organization");
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -6075,6 +6076,7 @@ function SettingsPage() {
     "Attendance policy",
     "Payroll policy",
     "Devices & integrations",
+    "Archive & restore",
   ];
   return (
     <>
@@ -6107,7 +6109,9 @@ function SettingsPage() {
                       ? "Shift timing, grace periods, and clock rules."
                       : tab === "Payroll policy"
                         ? "Deductions, approvals, and pay-cycle defaults."
-                        : "Biometric readers and external integrations."}
+                        : tab === "Archive & restore"
+                          ? "Archive and restore shifts and policy records."
+                          : "Biometric readers and external integrations."}
               </p>
             </div>
             {tab === "Devices & integrations" ? (
@@ -6118,7 +6122,9 @@ function SettingsPage() {
               <SlidersHorizontal className="text-emerald-700" />
             )}
           </div>
-          {tab === "Organization" && (
+          {tab === "Archive & restore" ? (
+            <SettingsArchive userRole={userRole} />
+          ) : tab === "Organization" ? (
             <div className="grid gap-5 sm:grid-cols-2">
               <FormField
                 label="Organization name"
@@ -6136,7 +6142,7 @@ function SettingsPage() {
                 placeholder="people@company.com"
               />
             </div>
-          )}
+          ) : null}
           {tab === "Roles & permissions" && (
             <div className="space-y-3">
               {[
@@ -6231,14 +6237,16 @@ function SettingsPage() {
               </button>
             </div>
           )}
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={() => toast.success(`${tab} settings saved`)}
-              className="rounded-lg bg-emerald-700 px-5 py-2 text-sm font-medium text-white"
-            >
-              Save changes
-            </button>
-          </div>
+          {tab !== "Archive & restore" && (
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => toast.success(`${tab} settings saved`)}
+                className="rounded-lg bg-emerald-700 px-5 py-2 text-sm font-medium text-white"
+              >
+                Save changes
+              </button>
+            </div>
+          )}
         </Card>
       </div>
       {editingRole && (
@@ -6373,7 +6381,7 @@ function Module({
     );
   if (view === "Employee Recognition") return <Recognition role={userRole} />;
   if (view === "Reports") return <Reports />;
-  if (view === "Settings") return <SettingsPage />;
+  if (view === "Settings") return <SettingsPage userRole={userRole} />;
   const meta: Record<string, [string, string, string[]]> = {
     "Shift Management": [
       "Shift management",

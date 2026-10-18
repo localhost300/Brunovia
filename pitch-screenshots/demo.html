@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brunovia | Pitch Screenshots</title>
+  <style>
+    :root{font-family:"Segoe UI",Inter,Arial,sans-serif;color:#202725;background:#f5f7f6;font-size:14px}
+    *{box-sizing:border-box}
+    body{margin:0}
+    .app{display:flex;min-height:100vh}
+    aside{width:242px;background:#fff;border-right:1px solid #e8ece9;padding:24px 16px;flex:none;display:flex;flex-direction:column}
+    .brand{display:flex;align-items:center;gap:11px;padding:0 8px 25px;font-size:19px;font-weight:700;letter-spacing:-.6px}
+    .brand-icon{width:34px;height:34px;border-radius:11px;background:#0e765f;color:#fff;display:grid;place-items:center;font-size:20px}
+    .tenant{padding:12px;background:#f5f8f6;border:1px solid #e9eeeb;border-radius:10px;margin-bottom:23px}
+    .tenant small,.muted{color:#84908a}
+    .tenant strong{display:block;margin-top:4px;font-size:13px}
+    .nav-label{font-size:10px;letter-spacing:1.1px;color:#96a19b;font-weight:700;padding:12px 10px 8px}
+    nav{display:grid;gap:4px}
+    nav a{color:#67726c;text-decoration:none;padding:10px 11px;border-radius:8px;display:flex;align-items:center;gap:12px;font-weight:500}
+    nav a.active{background:#eaf5f0;color:#0b765d;font-weight:650}
+    nav a span{width:18px;text-align:center;font-size:16px}
+    .side-bottom{margin-top:auto;border-top:1px solid #edf0ee;padding:16px 8px 0;display:flex;align-items:center;gap:10px}
+    .avatar{width:34px;height:34px;border-radius:50%;background:#e5eee9;color:#28745e;display:grid;place-items:center;font-weight:700;flex:none}
+    .side-bottom strong{font-size:12px}.side-bottom small{display:block;color:#929c96;margin-top:2px}
+    .main{flex:1;min-width:0}
+    header{height:68px;background:#fff;border-bottom:1px solid #e8ece9;display:flex;align-items:center;justify-content:space-between;padding:0 36px}
+    .crumb{color:#89938e;font-size:12px}.crumb b{color:#37413c;font-weight:600}
+    .top-actions{display:flex;align-items:center;gap:14px}
+    .demo{font-size:10px;font-weight:800;letter-spacing:.8px;color:#8a5c00;background:#fff5d9;border:1px solid #f2dfaa;padding:7px 10px;border-radius:20px}
+    .icon-btn{width:34px;height:34px;border-radius:9px;border:1px solid #e7ebe8;display:grid;place-items:center;color:#66716b}
+    .content{max-width:1500px;margin:auto;padding:30px 36px 36px}
+    .heading{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:25px}
+    h1{font-size:26px;letter-spacing:-.8px;margin:0 0 6px;font-weight:680}
+    .subtitle{color:#828d87;font-size:13px;margin:0}
+    .button{background:#0e765f;color:#fff;border:0;border-radius:8px;padding:10px 15px;font-weight:600;font-size:12px}
+    .button.light{background:#fff;color:#49544e;border:1px solid #e4e9e6}
+    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+    .card,.panel{background:#fff;border:1px solid #e8ece9;border-radius:12px;box-shadow:0 2px 8px #182b2010}
+    .card{padding:19px 20px}
+    .card-top{display:flex;justify-content:space-between;align-items:center;color:#68746d;font-size:12px;font-weight:550}
+    .card-icon{width:34px;height:34px;border-radius:10px;background:#edf7f2;color:#138263;display:grid;place-items:center;font-size:16px}
+    .metric{font-size:27px;font-weight:700;letter-spacing:-.8px;margin:12px 0 6px}
+    .delta{font-size:11px;color:#188365}.delta span{color:#96a09a;margin-left:4px}
+    .panels{display:grid;grid-template-columns:1.55fr 1fr;gap:17px;margin-bottom:18px}
+    .panel{padding:19px 20px}
+    .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px}
+    h2{font-size:14px;margin:0;font-weight:650}
+    .panel-head small{color:#929c96;font-size:11px}
+    .chart{height:206px;width:100%}
+    .chart svg{width:100%;height:100%;overflow:visible}
+    .chart-labels{display:flex;justify-content:space-between;color:#9aa49e;font-size:10px;padding:0 8px}
+    .activity{display:grid;gap:17px}
+    .activity-row{display:flex;align-items:center;gap:11px}
+    .activity-mark{width:32px;height:32px;border-radius:10px;background:#edf7f2;color:#148064;display:grid;place-items:center}
+    .activity-copy{flex:1;font-size:11px;color:#536059;line-height:1.5}
+    .activity-copy strong{color:#2d3933}
+    .activity-row time{color:#9aa49e;font-size:10px}
+    .lower{display:grid;grid-template-columns:1.4fr 1fr;gap:17px}
+    .dept-row{display:grid;grid-template-columns:100px 1fr 28px;align-items:center;gap:10px;margin:16px 0;font-size:11px;color:#66716b}
+    .bar{height:8px;background:#eef2ef;border-radius:8px;overflow:hidden}.bar i{display:block;height:100%;background:#42a986;border-radius:8px}
+    .table-wrap{background:#fff;border:1px solid #e8ece9;border-radius:12px;box-shadow:0 2px 8px #182b2010;overflow:hidden}
+    .table-tools{display:flex;justify-content:space-between;align-items:center;padding:17px 20px;border-bottom:1px solid #edf0ee}
+    .search{border:1px solid #e5eae7;border-radius:8px;color:#a0aaa4;padding:9px 12px;width:235px;font-size:11px}
+    .filter{border:1px solid #e5eae7;border-radius:8px;padding:9px 12px;color:#5e6963;font-size:11px}
+    table{border-collapse:collapse;width:100%;text-align:left}
+    th{font-size:10px;letter-spacing:.45px;text-transform:uppercase;color:#929c96;background:#fafbfa;font-weight:650}
+    th,td{padding:13px 18px;border-bottom:1px solid #edf0ee;white-space:nowrap}
+    td{font-size:11px;color:#525e57}
+    tbody tr:last-child td{border-bottom:0}
+    .person{display:flex;align-items:center;gap:10px}
+    .person .avatar{width:31px;height:31px;font-size:10px}
+    .person strong{display:block;color:#303b35;font-size:11px}
+    .person small{display:block;color:#9aa49e;font-size:10px;margin-top:3px}
+    .pill{display:inline-block;border-radius:20px;padding:5px 9px;background:#edf7f1;color:#188064;font-size:10px;font-weight:650}
+    .pill.amber{background:#fff5df;color:#9a6a0b}.pill.blue{background:#edf3ff;color:#5673b8}.pill.gray{background:#f0f2f1;color:#707b74}
+    .summary-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+    .mini{background:#fff;border:1px solid #e8ece9;border-radius:11px;padding:15px 17px}
+    .mini small{color:#87918b;font-size:11px}.mini strong{display:block;font-size:22px;margin-top:7px}
+    .footer-note{text-align:right;color:#a0aaa4;font-size:10px;margin-top:14px}
+    .pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;align-items:start}
+    .stage{background:#f0f3f1;border-radius:11px;padding:12px}
+    .stage-title{display:flex;justify-content:space-between;font-size:11px;font-weight:650;color:#59655e;margin:2px 1px 12px}
+    .count{color:#89948d;font-weight:500}
+    .candidate{background:white;border:1px solid #e5eae7;border-radius:9px;padding:13px;margin-bottom:9px}
+    .candidate strong{font-size:11px;display:block;color:#303b35}
+    .candidate small{font-size:10px;color:#929c96;display:block;margin-top:5px}
+    .candidate-meta{display:flex;justify-content:space-between;border-top:1px solid #eef1ef;margin-top:12px;padding-top:9px;color:#78847d;font-size:9px}
+    .report-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .report-card{background:#fff;border:1px solid #e8ece9;border-radius:12px;padding:19px;min-height:148px}
+    .report-card .card-icon{margin-bottom:16px}
+    .report-card strong{display:block;font-size:13px}
+    .report-card p{color:#87918b;font-size:11px;line-height:1.5;margin:7px 0 12px}
+    .report-card a{font-size:10px;color:#0e765f;text-decoration:none;font-weight:650}
+    @media(max-width:1000px){aside{width:200px}.content{padding:24px}.cards{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="brand"><div class="brand-icon">b</div> Brunovia</div>
+      <div class="tenant"><small>WORKSPACE</small><strong>Northstar Services <span class="muted">⌄</span></strong></div>
+      <div class="nav-label">WORKSPACE</div>
+      <nav>
+        <a data-page="dashboard" href="#dashboard"><span>▦</span>Dashboard</a>
+        <a data-page="employees" href="#employees"><span>♙</span>Employees</a>
+        <a data-page="attendance" href="#attendance"><span>◷</span>Attendance</a>
+        <a href="#attendance"><span>▣</span>Shift Management</a>
+        <a href="#reports"><span>◎</span>Performance</a>
+        <a href="#reports"><span>☆</span>Recognition</a>
+        <a href="#attendance"><span>▤</span>Leave Management</a>
+        <a data-page="payroll" href="#payroll"><span>▱</span>Payroll</a>
+        <a data-page="recruitment" href="#recruitment"><span>♧</span>Recruitment</a>
+        <a data-page="reports" href="#reports"><span>▥</span>Reports</a>
+      </nav>
+      <div class="side-bottom"><div class="avatar">AD</div><div><strong>Alex Demo</strong><small>HR administrator</small></div></div>
+    </aside>
+    <div class="main">
+      <header><div class="crumb">Northstar Services <span class="muted">/</span> <b id="crumb">Dashboard</b></div><div class="top-actions"><span class="demo">FICTIONAL DEMO DATA</span><div class="icon-btn">♧</div><div class="avatar">AD</div></div></header>
+      <main class="content" id="screen"></main>
+    </div>
+  </div>
+  <script>
+    const people = [
+      ["AM","Amina Musa","Operations","Operations Lead","EMP-1042","Active"],
+      ["DO","David Okafor","Engineering","Software Engineer","EMP-1038","Active"],
+      ["LW","Lara Williams","People","People Partner","EMP-1033","Active"],
+      ["KO","Kofi Owusu","Finance","Finance Analyst","EMP-1027","On leave"],
+      ["NC","Nia Campbell","Customer Success","Account Manager","EMP-1019","Active"],
+      ["JM","Jonah Mensah","Operations","Field Coordinator","EMP-1012","Active"]
+    ];
+    const pageData = {
+      dashboard: ["Dashboard","A clear view of your people, attendance and operations."],
+      employees: ["Employees","Manage your team from one organized workspace."],
+      attendance: ["Attendance","A real-time view of attendance across your organization."],
+      payroll: ["Payroll","Review payroll runs and keep every pay period on track."],
+      recruitment: ["Recruitment","Track candidates from application to offer."],
+      reports: ["Reports & insights","Turn workforce information into actionable insight."]
+    };
+    const avatar = (initials) => `<div class="avatar">${initials}</div>`;
+    const person = (row) => `<div class="person">${avatar(row[0])}<div><strong>${row[1]}</strong><small>${row[2]}</small></div></div>`;
+    const status = (value) => `<span class="pill ${value==="On leave"?"amber":value==="Late"?"amber":value==="Pending"?"blue":value==="Processing"?"blue":""}">${value}</span>`;
+    function dashboard(){
+      return `<div class="heading"><div><h1>Good morning, Alex <span style="color:#dcae50">✦</span></h1><p class="subtitle">Here's what's happening across your organization today.</p></div><button class="button light">↗ &nbsp; 14 October 2026</button></div>
+      <div class="cards">
+        ${[["Active employees","248","↑ 8.2%","♙"],["Present today","231","↑ 3.1%","◷"],["On leave","12","Across 4 teams","▤"],["Open positions","8","3 new this week","♧"]].map(x=>`<section class="card"><div class="card-top">${x[0]}<span class="card-icon">${x[3]}</span></div><div class="metric">${x[1]}</div><div class="delta">${x[2]} <span>vs last month</span></div></section>`).join("")}
+      </div>
+      <div class="panels">
+        <section class="panel"><div class="panel-head"><h2>Attendance overview</h2><small>Last 7 days &nbsp;⌄</small></div><div class="chart"><svg viewBox="0 0 600 210" preserveAspectRatio="none"><defs><linearGradient id="fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#22a47c" stop-opacity=".22"/><stop offset="1" stop-color="#22a47c" stop-opacity="0"/></linearGradient></defs><g stroke="#edf0ee" stroke-dasharray="3 5"><path d="M40 30H590"/><path d="M40 75H590"/><path d="M40 120H590"/><path d="M40 165H590"/></g><path d="M40 130 C90 116 110 92 145 100 S200 138 240 91 S300 63 335 83 S395 49 430 68 S495 96 530 45 S565 51 590 25 V180 H40Z" fill="url(#fill)"/><path d="M40 130 C90 116 110 92 145 100 S200 138 240 91 S300 63 335 83 S395 49 430 68 S495 96 530 45 S565 51 590 25" fill="none" stroke="#178a69" stroke-width="3"/></svg><div class="chart-labels"><span>Wed 8</span><span>Thu 9</span><span>Fri 10</span><span>Sat 11</span><span>Sun 12</span><span>Mon 13</span><span>Tue 14</span></div></div></section>
+        <section class="panel"><div class="panel-head"><h2>Recent activity</h2><small>View all &nbsp;→</small></div><div class="activity">
+          <div class="activity-row"><div class="activity-mark">♙</div><div class="activity-copy"><strong>Amina Musa</strong> joined the Operations team</div><time>9:42</time></div>
+          <div class="activity-row"><div class="activity-mark">◷</div><div class="activity-copy"><strong>Daily attendance</strong> is 93% complete</div><time>9:18</time></div>
+          <div class="activity-row"><div class="activity-mark">▤</div><div class="activity-copy"><strong>3 leave requests</strong> need manager review</div><time>8:56</time></div>
+          <div class="activity-row"><div class="activity-mark">▱</div><div class="activity-copy"><strong>September payroll</strong> is ready for approval</div><time>Yesterday</time></div>
+        </div></section>
+      </div>
+      <div class="lower"><section class="panel"><div class="panel-head"><h2>Team distribution</h2><small>248 employees</small></div>
+        ${[["Operations",82,33],["Engineering",61,25],["Customer Success",48,19],["Finance",32,13],["People & Culture",25,10]].map(x=>`<div class="dept-row"><span>${x[0]}</span><div class="bar"><i style="width:${x[2]*2.4}%"></i></div><b>${x[1]}</b></div>`).join("")}
+      </section><section class="panel"><div class="panel-head"><h2>People highlights</h2><small>This month</small></div><div style="display:flex;align-items:center;gap:13px;padding:8px 0 15px;border-bottom:1px solid #edf0ee">${avatar("AM")}<div><strong style="font-size:12px">Amina Musa</strong><div class="muted" style="font-size:10px;margin-top:4px">Team member spotlight · Operations</div></div><span style="margin-left:auto;color:#c18c1a;font-size:20px">☆</span></div><div style="padding-top:14px;color:#59655e;font-size:11px;line-height:1.8">Your people operations are in good shape. Review pending leave requests to keep approvals moving.</div></section></div>`;
+    }
+    function employees(){
+      return `<div class="heading"><div><h1>Employees</h1><p class="subtitle">Your people directory, all in one place.</p></div><button class="button">＋ &nbsp; Add employee</button></div>
+      <div class="summary-row"><div class="mini"><small>Total employees</small><strong>248</strong></div><div class="mini"><small>Active</small><strong>236</strong></div><div class="mini"><small>Departments</small><strong>8</strong></div></div>
+      <div class="table-wrap"><div class="table-tools"><div class="search">⌕ &nbsp; Search employees</div><div style="display:flex;gap:9px"><div class="filter">All departments &nbsp;⌄</div><div class="filter">Status &nbsp;⌄</div><div class="filter">☷ &nbsp; Filter</div></div></div><table><thead><tr><th>Employee</th><th>Employee ID</th><th>Department</th><th>Position</th><th>Status</th><th>Shift</th></tr></thead><tbody>${people.map((p,i)=>`<tr><td>${person(p)}</td><td>${p[4]}</td><td>${p[2]}</td><td>${p[3]}</td><td>${status(p[5])}</td><td>${i%2===0?"Morning":"Evening"}</td></tr>`).join("")}</tbody></table></div><div class="footer-note">Showing 6 of 248 fictional employees</div>`;
+    }
+    function attendance(){
+      const rows=[["AM","Amina Musa","Operations","07:02 AM","On time","Present"],["DO","David Okafor","Engineering","07:18 AM","18 min","Late"],["LW","Lara Williams","People","07:05 AM","On time","Present"],["KO","Kofi Owusu","Finance","—","Approved leave","On leave"],["NC","Nia Campbell","Customer Success","07:11 AM","On time","Present"],["JM","Jonah Mensah","Operations","—","Not clocked in","Pending"]];
+      return `<div class="heading"><div><h1>Attendance</h1><p class="subtitle">Daily attendance across all teams.</p></div><div style="display:flex;gap:9px"><button class="button light">↗ &nbsp; Export</button><button class="button">＋ &nbsp; Manual entry</button></div></div>
+      <div class="summary-row"><div class="mini"><small>Present today</small><strong>231 <span style="font-size:12px;color:#87918b;font-weight:500">/ 248</span></strong></div><div class="mini"><small>Late arrivals</small><strong>7</strong></div><div class="mini"><small>Not clocked in</small><strong>5</strong></div></div>
+      <div class="table-wrap"><div class="table-tools"><div class="search">⌕ &nbsp; Search by employee</div><div style="display:flex;gap:9px"><div class="filter">Today · 14 Oct &nbsp;⌄</div><div class="filter">All shifts &nbsp;⌄</div></div></div><table><thead><tr><th>Employee</th><th>Department</th><th>Clock in</th><th>Verification</th><th>Schedule</th><th>Shift</th><th>Status</th></tr></thead><tbody>${rows.map((p,i)=>`<tr><td>${person(p)}</td><td>${p[2]}</td><td>${p[3]}</td><td>${i===3?"—":i===5?"Pending":i===2?"Manual":"Fingerprint"}</td><td>${p[4]}</td><td>${i%2===0?"Morning · 07:00":"Evening · 15:00"}</td><td>${status(p[5])}</td></tr>`).join("")}</tbody></table></div><div class="footer-note">Attendance data is fictional and for demonstration only.</div>`;
+    }
+    function payroll(){
+      const rows=[["September 2026","248","₦ 42,680,000","30 Sep 2026","Approved"],["August 2026","243","₦ 41,920,000","31 Aug 2026","Paid"],["July 2026","241","₦ 40,850,000","31 Jul 2026","Paid"]];
+      return `<div class="heading"><div><h1>Payroll</h1><p class="subtitle">Payroll runs and compensation at a glance.</p></div><button class="button">＋ &nbsp; Create payroll run</button></div>
+      <div class="cards">${[["Next pay date","31 Oct 2026","Upcoming pay day","◷"],["Employees","248","Across all departments","♙"],["Monthly gross","₦ 42.68m","September payroll","▱"],["Awaiting review","1","Approval required","✓"]].map(x=>`<section class="card"><div class="card-top">${x[0]}<span class="card-icon">${x[3]}</span></div><div class="metric" style="font-size:24px">${x[1]}</div><div class="delta" style="color:#87918b">${x[2]}</div></section>`).join("")}</div>
+      <div class="table-wrap"><div class="table-tools"><h2>Recent payroll runs</h2><div class="filter">All pay periods &nbsp;⌄</div></div><table><thead><tr><th>Pay period</th><th>Employees</th><th>Gross payroll</th><th>Pay date</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((p,i)=>`<tr><td><strong style="color:#303b35">${p[0]}</strong></td><td>${p[1]}</td><td>${p[2]}</td><td>${p[3]}</td><td>${status(p[4]==="Paid"?"Paid":p[4])}</td><td>···</td></tr>`).join("")}</tbody></table></div><div class="footer-note">All employee names and payroll amounts shown are fictional.</div>`;
+    }
+    function recruitment(){
+      const stages=[["Applied",[["SD","Sofia Davis","Product Designer","Applied 2 days ago"],["EB","Ethan Brown","Data Analyst","Applied 3 days ago"]]],["Screening",[["PR","Priya Rao","People Partner","Screening today"],["MT","Mateo Torres","Software Engineer","Screening yesterday"]]],["Interview",[["ZK","Zara Khan","Operations Lead","Panel · 15 Oct"],["OL","Owen Lee","Account Manager","Panel · 16 Oct"]]],["Offer",[["AG","Amara Green","Finance Analyst","Offer sent · 13 Oct"]]]];
+      return `<div class="heading"><div><h1>Recruitment</h1><p class="subtitle">Keep every hiring process moving forward.</p></div><button class="button">＋ &nbsp; Add candidate</button></div>
+      <div class="summary-row"><div class="mini"><small>Open positions</small><strong>8</strong></div><div class="mini"><small>Active candidates</small><strong>34</strong></div><div class="mini"><small>Interviews this week</small><strong>6</strong></div></div>
+      <div class="table-tools" style="background:#fff;border:1px solid #e8ece9;border-radius:11px;margin-bottom:14px"><h2>Hiring pipeline</h2><div style="display:flex;gap:9px"><div class="filter">All positions &nbsp;⌄</div><div class="filter">Board view &nbsp;⌄</div></div></div>
+      <div class="pipeline">${stages.map(stage=>`<section class="stage"><div class="stage-title">${stage[0]}<span class="count">${stage[1].length}</span></div>${stage[1].map(c=>`<div class="candidate"><div class="person">${avatar(c[0])}<div><strong>${c[1]}</strong><small>${c[2]}</small></div></div><div class="candidate-meta"><span>${c[3]}</span><span>•••</span></div></div>`).join("")}</section>`).join("")}</div><div class="footer-note">Candidate profiles are fictional demo records.</div>`;
+    }
+    function reports(){
+      const cards=[["▥","Workforce overview","Headcount, department distribution and workforce trends."],["◷","Attendance summary","Daily attendance, punctuality and shift coverage."],["▱","Payroll register","Compensation totals and payroll run status."],["▤","Leave utilization","Leave balances, requests and approvals by team."],["◎","Performance insights","Review completion and employee goal progress."],["♧","Recruitment pipeline","Open roles and candidate progress by stage."]];
+      return `<div class="heading"><div><h1>Reports & insights</h1><p class="subtitle">Useful workforce insights, ready when you need them.</p></div><button class="button light">↗ &nbsp; Export center</button></div><div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">${[["Workforce size","248","↑ 8.2% this quarter"],["Attendance rate","93.1%","↑ 2.4% this month"],["Open positions","8","6 candidates in interview"]].map(x=>`<section class="card"><div class="card-top">${x[0]}</div><div class="metric">${x[1]}</div><div class="delta">${x[2]}</div></section>`).join("")}</div><div class="report-grid">${cards.map(x=>`<section class="report-card"><div class="card-icon">${x[0]}</div><strong>${x[1]}</strong><p>${x[2]}</p><a href="#reports">View report &nbsp;→</a></section>`).join("")}</div><div class="footer-note">Sample insights use fictional organization data.</div>`;
+    }
+    const renderers={dashboard,employees,attendance,payroll,recruitment,reports};
+    function render(){
+      const key=location.hash.replace("#","")||"dashboard";
+      const page=pageData[key]?key:"dashboard";
+      document.getElementById("crumb").textContent=pageData[page][0];
+      document.getElementById("screen").innerHTML=renderers[page]();
+      document.querySelectorAll("nav a[data-page]").forEach(a=>a.classList.toggle("active",a.dataset.page===page));
+      document.title=`${pageData[page][0]} | Brunovia demo`;
+    }
+    window.addEventListener("hashchange",render);
+    render();
+  </script>
+</body>
+</html>
