@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Loader2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { getWeekdayShiftOptions } from "@/lib/workforce/shifts";
 import { createClient } from "@/lib/supabase/client";
 import type { AppUser } from "@/types/database";
 
@@ -162,7 +163,7 @@ export function ShiftWorkspace({ user }: { user: AppUser }) {
                         {canManage ? (
                           <select value={baseShift} onChange={(event) => void assign(employee.id, event.target.value)} className="input min-w-40">
                             <option value="" disabled>Choose shift</option>
-                            {shifts.filter((shift) => shift.name !== "Full Day").map((shift) => <option key={shift.id} value={shift.id}>{shift.name}</option>)}
+                            {getWeekdayShiftOptions(shifts).map((shift) => <option key={shift.id} value={shift.id}>{shift.name}</option>)}
                           </select>
                         ) : shifts.find((shift) => shift.id === baseShift)?.name ?? "Not assigned"}
                       </td>
