@@ -3907,12 +3907,12 @@ function Payroll() {
     >([]),
     [lateRule, setLateRule] = useState<LateDeductionRule>({
       graceMinutes: 10,
-      deductionAmount: 2500,
+      deductionAmount: 1000,
       active: true,
       tiers: [
-        { fromMinutes: 11, toMinutes: 30, amount: 2500 },
-        { fromMinutes: 31, toMinutes: 60, amount: 5000 },
-        { fromMinutes: 61, toMinutes: null, amount: 10000 },
+        { fromMinutes: 11, toMinutes: 30, amount: 1000 },
+        { fromMinutes: 31, toMinutes: 60, amount: 2000 },
+        { fromMinutes: 61, toMinutes: null, amount: 3000 },
       ],
     }),
     [manualDeductions, setManualDeductions] = useState<Record<string, number>>(
@@ -4949,8 +4949,14 @@ function DeductionModal({
 }) {
   const [amount, setAmount] = useState(""),
     [reason, setReason] = useState(""),
+    [deductionType, setDeductionType] = useState("DISCIPLINARY"),
     [confirmed, setConfirmed] = useState(false);
   const value = Number(amount);
+
+  useEffect(() => {
+    if (deductionType === "ABSENCE") setAmount("2000");
+    else if (!amount) setAmount("");
+  }, [deductionType]);
   const valid = value > 0 && reason.trim().length >= 5 && confirmed;
   return (
     <Modal title="Add salary deduction" close={close}>
@@ -4972,12 +4978,16 @@ function DeductionModal({
             min="1"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder="e.g. 10000"
+            placeholder={deductionType === "ABSENCE" ? "2000" : "e.g. 10000"}
           />
         </label>
         <label className="text-xs font-medium">
           Deduction type
-          <select className="input mt-1.5" defaultValue="DISCIPLINARY">
+          <select
+            className="input mt-1.5"
+            value={deductionType}
+            onChange={(event) => setDeductionType(event.target.value)}
+          >
             <option value="DISCIPLINARY">Disciplinary</option>
             <option value="LOAN">Loan repayment</option>
             <option value="DAMAGE">Asset damage</option>

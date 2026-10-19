@@ -214,6 +214,25 @@ export function FinanceDashboard({ user }: { user: AppUser }) {
     toast.success(`${id} approved and added to the books`);
   };
 
+  const deleteTransaction = async (id: string) => {
+    const target = transactions.find((item) => item.id === id);
+    if (!target) return;
+    if (!window.confirm(`Delete transaction ${id}? This cannot be undone.`)) return;
+    if (hasDatabase && "databaseId" in target) {
+      const { error } = await createClient()
+        .from("finance_transactions")
+        .delete()
+        .eq("id", (target as Transaction & { databaseId?: string }).databaseId ?? "");
+      if (error) {
+        toast.error("Transaction could not be deleted");
+        return;
+      }
+    }
+    setTransactions((items) => items.filter((item) => item.id !== id));
+    setSelectedTransaction((item) => (item && item.id === id ? null : item));
+    toast.success(`${id} deleted`);
+  };
+
   const saveTransaction = async (item: Transaction) => {
     if (hasDatabase) {
       const supabase = createClient();
@@ -306,6 +325,7 @@ export function FinanceDashboard({ user }: { user: AppUser }) {
           spend={spend}
           transactions={transactions}
           approve={approve}
+          deleteTransaction={deleteTransaction}
           viewTransaction={setSelectedTransaction}
         />
       )}
@@ -317,6 +337,7 @@ export function FinanceDashboard({ user }: { user: AppUser }) {
           filter={typeFilter}
           setFilter={setTypeFilter}
           approve={approve}
+          deleteTransaction={deleteTransaction}
           viewTransaction={setSelectedTransaction}
         />
       )}
@@ -388,12 +409,14 @@ function Overview({
   spend,
   transactions,
   approve,
+  deleteTransaction,
   viewTransaction,
 }: {
   totals: { income: number; expense: number; profit: number; margin: number };
   spend: { name: string; value: number }[];
   transactions: Transaction[];
   approve: (id: string) => void;
+  deleteTransaction: (id: string) => Promise<void> | void;
   viewTransaction: (item: Transaction) => void;
 }) {
   const pending = transactions.filter((item) => item.status === "Pending");
@@ -423,8 +446,8 @@ function Overview({
         />
         <Stat
           label="Cash balance"
-          value={money(12480000)}
-          note="Across 3 tracked accounts"
+          value={money(Math.max(0, totals.income - totals.expense))}
+          note="Based on approved entries"
           icon={Landmark}
           tone="bg-amber-50 text-amber-700"
         />
@@ -517,6 +540,7 @@ function Overview({
           <TransactionTable
             items={transactions.slice(0, 5)}
             approve={approve}
+            deleteTransaction={deleteTransaction}
             viewTransaction={viewTransaction}
           />
         </Panel>
@@ -599,6 +623,7 @@ function Transactions({
   filter,
   setFilter,
   approve,
+  deleteTransaction,
   viewTransaction,
 }: {
   items: Transaction[];
@@ -607,6 +632,7 @@ function Transactions({
   filter: string;
   setFilter: (v: string) => void;
   approve: (id: string) => void;
+  deleteTransaction: (id: string) => Promise<void> | void;
   viewTransaction: (item: Transaction) => void;
 }) {
   return (
@@ -638,6 +664,7 @@ function Transactions({
       <TransactionTable
         items={items}
         approve={approve}
+        deleteTransaction={deleteTransaction}
         viewTransaction={viewTransaction}
       />
     </Panel>
@@ -647,10 +674,12 @@ function Transactions({
 function TransactionTable({
   items,
   approve,
+  deleteTransaction,
   viewTransaction,
 }: {
   items: Transaction[];
   approve: (id: string) => void;
+  deleteTransaction: (id: string) => Promise<void> | void;
   viewTransaction: (item: Transaction) => void;
 }) {
   return (
@@ -709,6 +738,12 @@ function TransactionTable({
                       Approve
                     </button>
                   )}
+                  <button
+                    onClick={() => void deleteTransaction(item.id)}
+                    className="text-xs font-medium text-red-600"
+                  >
+                    Delete
+                  </button>
                 </div>
               </td>
             </tr>
