@@ -198,6 +198,12 @@ const shiftHours: Record<ShiftAssignment, string> = {
   "Off duty": "No scheduled hours",
   Leave: "Approved leave",
 };
+const money = (value: number) =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(value);
 function rosterWeekStart(offset = 0) {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -3898,8 +3904,11 @@ function Payroll() {
     [payrollExporting, setPayrollExporting] = useState(false),
     [deducting, setDeducting] = useState<(typeof people)[number] | null>(null),
     [editingLateRule, setEditingLateRule] = useState(false),
+    [editingAbsenceRule, setEditingAbsenceRule] = useState(false),
     [lateRuleId, setLateRuleId] = useState<string | null>(null),
+    [absenceRuleId, setAbsenceRuleId] = useState<string | null>(null),
     [savingLateRule, setSavingLateRule] = useState(false),
+    [savingAbsenceRule, setSavingAbsenceRule] = useState(false),
     [payrollStatus, setPayrollStatus] = useState("DRAFT"),
     [changingPayrollStatus, setChangingPayrollStatus] = useState(false),
     [ruleHistory, setRuleHistory] = useState<
@@ -3915,6 +3924,7 @@ function Payroll() {
         { fromMinutes: 61, toMinutes: null, amount: 3000 },
       ],
     }),
+    [absenceRuleAmount, setAbsenceRuleAmount] = useState(2000),
     [manualDeductions, setManualDeductions] = useState<Record<string, number>>(
       {},
     );
@@ -3931,13 +3941,20 @@ function Payroll() {
         .limit(1)
         .maybeSingle(),
       supabase
+        .from("deduction_policies")
+        .select("id,amount_per_occurrence,active")
+        .eq("adjustment_type", "ABSENCE")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
         .from("payroll")
         .select("status")
         .gte("period", "2026-09-01")
         .lte("period", "2026-09-30")
         .limit(1)
         .maybeSingle(),
-    ]).then(([policyResult, payrollResult]) => {
+    ]).then(([policyResult, absencePolicyResult, payrollResult]) => {
       if (policyResult.data) {
         setLateRuleId(policyResult.data.id);
         const storedTiers = Array.isArray(policyResult.data.tiers)
@@ -3954,6 +3971,10 @@ function Payroll() {
           active: policyResult.data.active,
           tiers: storedTiers,
         });
+      }
+      if (absencePolicyResult.data) {
+        setAbsenceRuleId(absencePolicyResult.data.id);
+        setAbsenceRuleAmount(Number(absencePolicyResult.data.amount_per_occurrence));
       }
       if (payrollResult.data?.status)
         setPayrollStatus(payrollResult.data.status);
@@ -4007,6 +4028,54 @@ function Payroll() {
       );
     } finally {
       setSavingLateRule(false);
+    }
+  };
+
+  const persistAbsenceRule = async (amount: number) => {
+    if (hasSupabaseConfig() && !navigator.onLine) {
+      toast.error("You’re offline. Reconnect before changing a payroll rule.");
+      return;
+    }
+    setSavingAbsenceRule(true);
+    try {
+      if (hasSupabaseConfig()) {
+        const supabase = createClient();
+        const { data: authData } = await supabase.auth.getUser();
+        const payload = {
+          adjustment_type: "ABSENCE",
+          grace_minutes: 0,
+          amount_per_occurrence: amount,
+          active: true,
+          updated_by: authData.user?.id ?? null,
+          updated_at: new Date().toISOString(),
+          name: "Standard absence penalty",
+        };
+
+        if (absenceRuleId) {
+          const { error } = await supabase
+            .from("deduction_policies")
+            .update(payload)
+            .eq("id", absenceRuleId);
+          if (error) throw error;
+        } else {
+          const { data, error } = await supabase
+            .from("deduction_policies")
+            .insert(payload)
+            .select("id")
+            .single();
+          if (error) throw error;
+          setAbsenceRuleId(data.id);
+        }
+      }
+      setAbsenceRuleAmount(amount);
+      setEditingAbsenceRule(false);
+      toast.success("Absence deduction policy updated");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "The absence rule could not be saved",
+      );
+    } finally {
+      setSavingAbsenceRule(false);
     }
   };
 
@@ -4591,6 +4660,23 @@ function Payroll() {
           </div>
         </div>
       </Card>
+      <Card className="mt-5">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="font-semibold">Default unapproved absence deduction</h2>
+            <p className="mt-1 text-xs text-zinc-400">
+              Employees without a valid leave or off-duty status will be charged {money(absenceRuleAmount)} per absence.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditingAbsenceRule(true)}
+            className="rounded-lg border px-3 py-2 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900"
+          >
+            Edit absence rule
+          </button>
+        </div>
+      </Card>
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Card>
           <h2 className="font-semibold">Rule audit history</h2>
@@ -4761,6 +4847,7 @@ function Payroll() {
           employee={deducting}
           existing={manualDeductions[deducting.id] ?? 0}
           close={() => setDeducting(null)}
+          defaultAbsenceAmount={absenceRuleAmount}
           save={(amount) => {
             setManualDeductions((current) => ({
               ...current,
@@ -4783,7 +4870,82 @@ function Payroll() {
           saving={savingLateRule}
         />
       )}
+      {editingAbsenceRule && (
+        <AbsenceDeductionRuleModal
+          amount={absenceRuleAmount}
+          close={() => setEditingAbsenceRule(false)}
+          save={(amount) => {
+            void persistAbsenceRule(amount);
+          }}
+          saving={savingAbsenceRule}
+        />
+      )}
     </>
+  );
+}
+
+function AbsenceDeductionRuleModal({
+  amount,
+  close,
+  save,
+  saving,
+}: {
+  amount: number;
+  close: () => void;
+  save: (amount: number) => void;
+  saving: boolean;
+}) {
+  const [value, setValue] = useState(String(amount));
+
+  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const next = Number(value);
+    if (!Number.isFinite(next) || next < 0) {
+      toast.error("Enter a valid absence deduction amount");
+      return;
+    }
+    save(next);
+  };
+
+  return (
+    <Modal title="Edit absence deduction rule" close={close}>
+      <form onSubmit={submit} className="space-y-5">
+        <div className="rounded-xl border bg-zinc-50 p-4 text-sm dark:bg-zinc-900">
+          <p className="font-medium">Default absence charge</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            This amount is used when an employee is absent without leave or off-duty status.
+          </p>
+        </div>
+        <label className="block text-xs font-medium">
+          Amount per unapproved absence (₦)
+          <input
+            className="input mt-1.5"
+            type="number"
+            min="0"
+            step="100"
+            required
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
+        </label>
+        <div className="flex justify-end gap-3 border-t pt-4">
+          <button
+            type="button"
+            onClick={close}
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save rule"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -4941,11 +5103,13 @@ function DeductionModal({
   existing,
   close,
   save,
+  defaultAbsenceAmount = 2000,
 }: {
   employee: (typeof people)[number];
   existing: number;
   close: () => void;
   save: (amount: number) => void;
+  defaultAbsenceAmount?: number;
 }) {
   const [amount, setAmount] = useState(""),
     [reason, setReason] = useState(""),
@@ -4954,9 +5118,12 @@ function DeductionModal({
   const value = Number(amount);
 
   useEffect(() => {
-    if (deductionType === "ABSENCE") setAmount("2000");
-    else if (!amount) setAmount("");
-  }, [deductionType]);
+    if (deductionType === "ABSENCE") {
+      setAmount(String(defaultAbsenceAmount));
+    } else if (!amount) {
+      setAmount("");
+    }
+  }, [deductionType, defaultAbsenceAmount]);
   const valid = value > 0 && reason.trim().length >= 5 && confirmed;
   return (
     <Modal title="Add salary deduction" close={close}>
