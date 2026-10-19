@@ -204,6 +204,28 @@ const money = (value: number) =>
     currency: "NGN",
     maximumFractionDigits: 0,
   }).format(value);
+
+type NotificationItem = {
+  id: string;
+  user_id?: string;
+  title: string;
+  body: string;
+  type: string;
+  read_at?: string | null;
+  created_at?: string | null;
+};
+
+function formatNotificationTime(value?: string | null) {
+  if (!value) return "just now";
+  const diff = Date.now() - new Date(value).getTime();
+  const minutes = Math.max(1, Math.floor(diff / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
 function rosterWeekStart(offset = 0) {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -457,6 +479,7 @@ export function AppShell({
     [mobile, setMobile] = useState(false),
     [searchOpen, setSearchOpen] = useState(false),
     [searchQuery, setSearchQuery] = useState(""),
+    [notifications, setNotifications] = useState<NotificationItem[]>([]),
     [notificationsOpen, setNotificationsOpen] = useState(false),
     [profileOpen, setProfileOpen] = useState(false),
     [weeklyAssignments, setWeeklyAssignments] = useState<WeeklyAssignments>(
@@ -510,6 +533,89 @@ export function AppShell({
       JSON.stringify(weeklyAssignments),
     );
   }, [weeklyAssignments]);
+  useEffect(() => {
+    if (!hasSupabaseConfig() || user.id.startsWith("demo-")) {
+      setNotifications([]);
+      return;
+    }
+    const supabase = createClient();
+    let active = true;
+    const loadNotifications = async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id,title,body,type,read_at,created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(8);
+      if (!active) return;
+      if (error) {
+        setNotifications([]);
+        return;
+      }
+      setNotifications((data ?? []) as NotificationItem[]);
+    };
+    void loadNotifications();
+    const channel = supabase
+      .channel(`notifications:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const item = payload.new as NotificationItem | undefined;
+          setNotifications((current) => {
+            if (payload.eventType === "INSERT" && item) {
+              return [item, ...current.filter((row) => row.id !== item.id)];
+            }
+            if (payload.eventType === "UPDATE" && item) {
+              return current.map((row) => (row.id === item.id ? item : row));
+            }
+            if (payload.eventType === "DELETE") {
+              return current.filter((row) => row.id !== payload.old?.id);
+            }
+            return current;
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [user.id]);
+  const markAllNotificationsRead = async () => {
+    if (!hasSupabaseConfig() || user.id.startsWith("demo-")) {
+      setNotifications((current) =>
+        current.map((notification) => ({
+          ...notification,
+          read_at: notification.read_at ?? new Date().toISOString(),
+        })),
+      );
+      return;
+    }
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .is("read_at", null);
+    if (error) {
+      toast.error("Could not mark notifications as read");
+      return;
+    }
+    setNotifications((current) =>
+      current.map((notification) => ({
+        ...notification,
+        read_at: notification.read_at ?? new Date().toISOString(),
+      })),
+    );
+    setNotificationsOpen(false);
+    toast.success("All notifications marked as read");
+  };
   useEffect(() => {
     if (!hasSupabaseConfig() || user.id.startsWith("demo-")) return;
     const supabase = createClient();
@@ -794,55 +900,48 @@ export function AppShell({
                 <div className="absolute right-0 top-12 z-50 w-80 rounded-lg border bg-white p-2 shadow-xl dark:bg-zinc-950">
                   <div className="flex items-center justify-between px-2 py-2">
                     <p className="font-semibold">Notifications</p>
-                    <button
-                      onClick={() => {
-                        setNotificationsOpen(false);
-                        toast.success("All notifications marked as read");
-                      }}
-                      className="text-xs text-emerald-700"
-                    >
-                      Mark all read
-                    </button>
+                    {notifications.some((item) => !item.read_at) && (
+                      <button
+                        onClick={() => void markAllNotificationsRead()}
+                        className="text-xs text-emerald-700"
+                      >
+                        Mark all read
+                      </button>
+                    )}
                   </div>
-                  {[
-                    [
-                      "Finance approval required",
-                      "A marketing expense is waiting for review",
-                      "5m",
-                    ],
-                    [
-                      "Payroll completed",
-                      "September payroll has been posted",
-                      "2h",
-                    ],
-                    [
-                      "Report ready",
-                      "Monthly workforce report is available",
-                      "1d",
-                    ],
-                  ].map(([title, copy, time]) => (
-                    <button
-                      key={title}
-                      onClick={() => {
-                        setNotificationsOpen(false);
-                        if (title.includes("Finance")) setView("Finance");
-                      }}
-                      className="flex w-full gap-3 rounded-md px-2 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
-                    >
-                      <span className="mt-1 size-2 shrink-0 rounded-full bg-emerald-600" />
-                      <span>
-                        <span className="block text-sm font-medium">
-                          {title}
+                  {notifications.length === 0 ? (
+                    <div className="px-2 py-4 text-center text-xs text-zinc-500">
+                      No new notifications yet.
+                    </div>
+                  ) : (
+                    notifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        onClick={() => {
+                          setNotificationsOpen(false);
+                          if (notification.type === "finance") setView("Finance");
+                          if (notification.type === "payroll") setView("Payroll");
+                          if (notification.type === "leave") setView("Leave Management");
+                        }}
+                        className="flex w-full gap-3 rounded-md px-2 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                      >
+                        <span
+                          className={`mt-1 size-2 shrink-0 rounded-full ${notification.read_at ? "bg-zinc-300" : "bg-emerald-600"}`}
+                        />
+                        <span>
+                          <span className="block text-sm font-medium">
+                            {notification.title}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-zinc-500">
+                            {notification.body}
+                          </span>
                         </span>
-                        <span className="mt-0.5 block text-xs text-zinc-500">
-                          {copy}
+                        <span className="ml-auto text-[10px] text-zinc-400">
+                          {formatNotificationTime(notification.created_at)}
                         </span>
-                      </span>
-                      <span className="ml-auto text-[10px] text-zinc-400">
-                        {time}
-                      </span>
-                    </button>
-                  ))}
+                      </button>
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -1133,6 +1232,88 @@ function EmployeeDashboard({
         person.email.toLowerCase() === user.email.toLowerCase() ||
         person.name === user.name,
     ) ?? people[0];
+  const [paySummary, setPaySummary] = useState({
+    totalSalary: employeeDetails[employee.id]?.salary ?? 0,
+    deductions: 0,
+    remaining: employeeDetails[employee.id]?.salary ?? 0,
+  });
+  const [leaveSummary, setLeaveSummary] = useState({
+    available: 0,
+    pending: 0,
+    approved: 0,
+  });
+  useEffect(() => {
+    let active = true;
+    const loadDashboardDetails = async () => {
+      const salary = employeeDetails[employee.id]?.salary ?? 0;
+      if (!hasSupabaseConfig() || user.id.startsWith("demo-")) {
+        if (active) {
+          setPaySummary({ totalSalary: salary, deductions: 0, remaining: salary });
+          setLeaveSummary({ available: 12, pending: 0, approved: 0 });
+        }
+        return;
+      }
+      const supabase = createClient();
+      const { data: employeeRecord, error: employeeError } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!active || employeeError || !employeeRecord) {
+        if (active) {
+          setPaySummary({ totalSalary: salary, deductions: 0, remaining: salary });
+          setLeaveSummary({ available: 12, pending: 0, approved: 0 });
+        }
+        return;
+      }
+      const [payrollRequest, leaveBalancesRequest, leaveRequestsRequest] = await Promise.all([
+        supabase
+          .from("payroll")
+          .select("basic_salary,deductions,net_pay")
+          .eq("employee_id", employeeRecord.id)
+          .order("period", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("leave_balances")
+          .select("allowance,adjustment")
+          .eq("employee_id", employeeRecord.id)
+          .eq("balance_year", new Date().getFullYear()),
+        supabase
+          .from("leave_requests")
+          .select("id,status")
+          .eq("employee_id", employeeRecord.id),
+      ]);
+      if (!active) return;
+      const payrollRow = payrollRequest.data;
+      const salaryValue = Number(payrollRow?.basic_salary ?? salary);
+      const deductionsValue = Number(payrollRow?.deductions ?? 0);
+      const availableLeave = (leaveBalancesRequest.data ?? []).reduce(
+        (total: number, row: any) => total + Number(row.allowance ?? 0) + Number(row.adjustment ?? 0),
+        0,
+      );
+      const pendingLeaves = (leaveRequestsRequest.data ?? []).filter((row: any) =>
+        ["PENDING_MANAGER", "PENDING_HR"].includes(row.status),
+      ).length;
+      const approvedLeaves = (leaveRequestsRequest.data ?? []).filter((row: any) =>
+        row.status === "APPROVED",
+      ).length;
+      setPaySummary({
+        totalSalary: salaryValue,
+        deductions: deductionsValue,
+        remaining: Math.max(0, Number(payrollRow?.net_pay ?? salaryValue - deductionsValue)),
+      });
+      setLeaveSummary({
+        available: availableLeave || 12,
+        pending: pendingLeaves,
+        approved: approvedLeaves,
+      });
+    };
+    void loadDashboardDetails();
+    return () => {
+      active = false;
+    };
+  }, [employee.id, user.id]);
   const employeeIndex = people.findIndex((person) => person.id === employee.id);
   const currentShift =
     weeklyAssignments[0]?.[employee.id] ??
@@ -1150,30 +1331,32 @@ function EmployeeDashboard({
     <>
       <Header
         title={`Good morning, ${user.name.split(" ")[0]} 👋`}
-        desc="Here is your personal workday and HR overview."
+        desc="Your personal workday and pay summary."
       />
       <div className="grid gap-4 sm:grid-cols-4">
         <Card>
-          <p className="text-xs text-zinc-400">This week’s shift</p>
-          <p className="mt-2 text-lg font-semibold">{currentShift}</p>
-          <p className="text-xs text-zinc-400">{shiftHours[currentShift]}</p>
+          <p className="text-xs text-zinc-400">Total salary</p>
+          <p className="mt-2 text-lg font-semibold">₦{paySummary.totalSalary.toLocaleString()}</p>
+          <p className="text-xs text-zinc-400">Monthly gross pay</p>
         </Card>
         <Card>
-          <p className="text-xs text-zinc-400">Today</p>
+          <p className="text-xs text-zinc-400">Deductions</p>
+          <p className="mt-2 text-lg font-semibold">₦{paySummary.deductions.toLocaleString()}</p>
+          <p className="text-xs text-zinc-400">Current deductions</p>
+        </Card>
+        <Card>
+          <p className="text-xs text-zinc-400">Amount left</p>
           <p className="mt-2 text-lg font-semibold text-emerald-700">
-            Clocked in
+            ₦{paySummary.remaining.toLocaleString()}
           </p>
-          <p className="text-xs text-zinc-400">07:52 · HQ Lagos</p>
+          <p className="text-xs text-zinc-400">After deductions</p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Leave balance</p>
-          <p className="mt-2 text-lg font-semibold">14.5 days</p>
-          <p className="text-xs text-zinc-400">Annual leave</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-zinc-400">Performance</p>
-          <p className="mt-2 text-lg font-semibold">4.8/5</p>
-          <p className="text-xs text-zinc-400">Q3 review</p>
+          <p className="mt-2 text-lg font-semibold">{leaveSummary.available} days</p>
+          <p className="text-xs text-zinc-400">
+            {leaveSummary.pending} pending · {leaveSummary.approved} approved
+          </p>
         </Card>
       </div>
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
@@ -1271,6 +1454,88 @@ function EmployeePayroll({ user }: { user: AppUser }) {
         person.email.toLowerCase() === user.email.toLowerCase() ||
         person.name === user.name,
     ) ?? people[0];
+  const [paySummary, setPaySummary] = useState({
+    totalSalary: employeeDetails[employee.id]?.salary ?? 0,
+    deductions: 0,
+    remaining: employeeDetails[employee.id]?.salary ?? 0,
+  });
+  const [leaveSummary, setLeaveSummary] = useState({
+    available: 0,
+    pending: 0,
+    approved: 0,
+  });
+  useEffect(() => {
+    let active = true;
+    const loadPayrollDetails = async () => {
+      const salary = employeeDetails[employee.id]?.salary ?? 0;
+      if (!hasSupabaseConfig() || user.id.startsWith("demo-")) {
+        if (active) {
+          setPaySummary({ totalSalary: salary, deductions: 0, remaining: salary });
+          setLeaveSummary({ available: 12, pending: 0, approved: 0 });
+        }
+        return;
+      }
+      const supabase = createClient();
+      const { data: employeeRecord, error: employeeError } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!active || employeeError || !employeeRecord) {
+        if (active) {
+          setPaySummary({ totalSalary: salary, deductions: 0, remaining: salary });
+          setLeaveSummary({ available: 12, pending: 0, approved: 0 });
+        }
+        return;
+      }
+      const [payrollRequest, leaveBalancesRequest, leaveRequestsRequest] = await Promise.all([
+        supabase
+          .from("payroll")
+          .select("basic_salary,deductions,net_pay")
+          .eq("employee_id", employeeRecord.id)
+          .order("period", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("leave_balances")
+          .select("allowance,adjustment")
+          .eq("employee_id", employeeRecord.id)
+          .eq("balance_year", new Date().getFullYear()),
+        supabase
+          .from("leave_requests")
+          .select("id,status")
+          .eq("employee_id", employeeRecord.id),
+      ]);
+      if (!active) return;
+      const payrollRow = payrollRequest.data;
+      const salaryValue = Number(payrollRow?.basic_salary ?? salary);
+      const deductionsValue = Number(payrollRow?.deductions ?? 0);
+      const availableLeave = (leaveBalancesRequest.data ?? []).reduce(
+        (total: number, row: any) => total + Number(row.allowance ?? 0) + Number(row.adjustment ?? 0),
+        0,
+      );
+      const pendingLeaves = (leaveRequestsRequest.data ?? []).filter((row: any) =>
+        ["PENDING_MANAGER", "PENDING_HR"].includes(row.status),
+      ).length;
+      const approvedLeaves = (leaveRequestsRequest.data ?? []).filter((row: any) =>
+        row.status === "APPROVED",
+      ).length;
+      setPaySummary({
+        totalSalary: salaryValue,
+        deductions: deductionsValue,
+        remaining: Math.max(0, Number(payrollRow?.net_pay ?? salaryValue - deductionsValue)),
+      });
+      setLeaveSummary({
+        available: availableLeave || 12,
+        pending: pendingLeaves,
+        approved: approvedLeaves,
+      });
+    };
+    void loadPayrollDetails();
+    return () => {
+      active = false;
+    };
+  }, [employee.id, user.id]);
 
   const submitDispute = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1326,23 +1591,32 @@ function EmployeePayroll({ user }: { user: AppUser }) {
     <>
       <Header
         title="My pay"
-        desc="Your payslips, earnings, deductions, and payment history."
+        desc="Your total salary and current deductions."
       />
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <Card>
-          <p className="text-xs text-zinc-400">August net pay</p>
-          <p className="mt-2 text-2xl font-semibold">₦597,500</p>
-          <p className="text-xs text-emerald-600">Paid 30 Aug</p>
+          <p className="text-xs text-zinc-400">Total salary</p>
+          <p className="mt-2 text-2xl font-semibold">₦{paySummary.totalSalary.toLocaleString()}</p>
+          <p className="text-xs text-zinc-400">Monthly gross pay</p>
         </Card>
         <Card>
-          <p className="text-xs text-zinc-400">Total deductions</p>
-          <p className="mt-2 text-2xl font-semibold">₦112,500</p>
-          <p className="text-xs text-zinc-400">Tax, pension, penalties</p>
+          <p className="text-xs text-zinc-400">Deductions</p>
+          <p className="mt-2 text-2xl font-semibold">₦{paySummary.deductions.toLocaleString()}</p>
+          <p className="text-xs text-zinc-400">Current deductions</p>
         </Card>
         <Card>
-          <p className="text-xs text-zinc-400">Late penalties</p>
-          <p className="mt-2 text-2xl font-semibold">₦5,000</p>
-          <p className="text-xs text-zinc-400">2 occurrences</p>
+          <p className="text-xs text-zinc-400">Amount left</p>
+          <p className="mt-2 text-2xl font-semibold text-emerald-700">
+            ₦{paySummary.remaining.toLocaleString()}
+          </p>
+          <p className="text-xs text-zinc-400">After deductions</p>
+        </Card>
+        <Card>
+          <p className="text-xs text-zinc-400">Leave balance</p>
+          <p className="mt-2 text-2xl font-semibold">{leaveSummary.available} days</p>
+          <p className="text-xs text-zinc-400">
+            {leaveSummary.pending} pending · {leaveSummary.approved} approved
+          </p>
         </Card>
       </div>
       <Card className="mt-5">
