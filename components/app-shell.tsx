@@ -1277,11 +1277,8 @@ function useEmployeePaySummary(user: AppUser): EmployeePaySummary {
             .maybeSingle(),
           supabase
             .from("payroll")
-            .select(
-              "basic_salary,deductions,penalty_fee,net_pay,period",
-            )
+            .select("basic_salary,deductions,penalty_fee,net_pay,period")
             .eq("employee_id", employeeRecord.id)
-            .eq("status", "PAID")
             .order("period", { ascending: false })
             .limit(1)
             .maybeSingle(),
@@ -1354,7 +1351,7 @@ type LatePenaltyPolicy = {
 };
 const ATTENDANCE_HISTORY_PAGE_SIZE = 50;
 const ATTENDANCE_QUERY_PAGE_SIZE = 500;
-const LATE_DEDUCTION_START_DATE = "2026-10-19";
+const LATE_DEDUCTION_START_DATE = "2026-10-22";
 function getLatePenaltyEstimate(
   row: Pick<EmployeeAttendanceHistoryRow, "work_date" | "clock_in" | "shifts">,
   policy: LatePenaltyPolicy,
@@ -1814,10 +1811,14 @@ function EmployeeDashboard({
         <Card>
           <p className="text-xs text-zinc-400">Deductions</p>
           <p className="mt-2 text-lg font-semibold">
-            {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.deductions} />}
+            {paySummary.loading ? "Loading…" : (
+              <span className="text-red-600">
+                <PaySummaryValue value={paySummary.deductions} />
+              </span>
+            )}
           </p>
           <p className="text-xs text-zinc-400">
-            {paySummary.period ? `Latest paid payroll · ${paySummary.period.slice(0, 7)}` : "Latest paid payroll deductions"}
+            {paySummary.period ? `Latest payroll · ${paySummary.period.slice(0, 7)}` : "Latest payroll deductions"}
           </p>
         </Card>
         <Card>
@@ -1825,7 +1826,7 @@ function EmployeeDashboard({
           <p className="mt-2 text-lg font-semibold text-emerald-700">
             {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.netPay} />}
           </p>
-          <p className="text-xs text-zinc-400">Latest paid net pay</p>
+          <p className="text-xs text-zinc-400">Latest payroll net pay</p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Leave balance</p>
@@ -2062,10 +2063,14 @@ function EmployeePayroll({ user }: { user: AppUser }) {
         <Card>
           <p className="text-xs text-zinc-400">Deductions</p>
           <p className="mt-2 text-2xl font-semibold">
-            {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.deductions} />}
+            {paySummary.loading ? "Loading…" : (
+              <span className="text-red-600">
+                <PaySummaryValue value={paySummary.deductions} />
+              </span>
+            )}
           </p>
           <p className="text-xs text-zinc-400">
-            {paySummary.period ? `Latest paid payroll · ${paySummary.period.slice(0, 7)}` : "Latest paid payroll deductions"}
+            {paySummary.period ? `Latest payroll · ${paySummary.period.slice(0, 7)}` : "Latest payroll deductions"}
           </p>
         </Card>
         <Card>
@@ -2073,7 +2078,7 @@ function EmployeePayroll({ user }: { user: AppUser }) {
           <p className="mt-2 text-2xl font-semibold text-emerald-700">
             {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.netPay} />}
           </p>
-          <p className="text-xs text-zinc-400">Latest paid net pay</p>
+          <p className="text-xs text-zinc-400">Latest payroll net pay</p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Leave balance</p>
@@ -4640,11 +4645,11 @@ function Payroll() {
       active: true,
       tiers: [
         { fromMinutes: 11, toMinutes: 30, amount: 1000 },
-        { fromMinutes: 31, toMinutes: 60, amount: 2000 },
-        { fromMinutes: 61, toMinutes: null, amount: 3000 },
+        { fromMinutes: 31, toMinutes: 60, amount: 1000 },
+        { fromMinutes: 61, toMinutes: null, amount: 1000 },
       ],
     }),
-    [absenceRuleAmount, setAbsenceRuleAmount] = useState(2000),
+    [absenceRuleAmount, setAbsenceRuleAmount] = useState(2500),
     [manualDeductions, setManualDeductions] = useState<Record<string, number>>(
       {},
     );

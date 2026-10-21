@@ -329,7 +329,7 @@ export function PayrollWorkspace() {
       ["Bonuses", row.bonuses],
       ["Overtime", row.overtime],
       ["Credits", row.credit_adjustments],
-      ["Other deductions", -(Number(row.deductions) + Number(row.penalty_fee))],
+      ["Deductions", -(Number(row.deductions) + Number(row.penalty_fee))],
       ["Net pay", row.net_pay],
     ].forEach(([title, value], index) =>
       document.text(`${title}: ${money(Number(value))}`, 20, 58 + index * 9),
@@ -567,7 +567,7 @@ export function PayrollWorkspace() {
                       ].map((value, index) => (
                         <td
                           key={index}
-                          className={`px-3 tabular-nums ${index === 4 ? "text-emerald-700" : index === 5 ? "text-red-600" : index === 6 ? "font-semibold text-emerald-700" : ""}`}
+                          className={`px-3 tabular-nums ${index === 3 || index === 5 ? "text-emerald-700" : index === 4 ? "text-red-600" : ""} ${index === 5 ? "font-semibold" : ""}`}
                         >
                           {money(Number(value))}
                         </td>
