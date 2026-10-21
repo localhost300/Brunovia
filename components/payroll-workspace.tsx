@@ -420,8 +420,16 @@ export function PayrollWorkspace() {
                 key={title}
                 className="rounded-xl border bg-white p-5 dark:bg-zinc-950"
               >
-                <p className="text-sm text-zinc-500">{title}</p>
-                <p className="mt-2 text-xl font-semibold">{value}</p>
+                <p
+                  className={`text-sm ${title === "Deductions" ? "text-red-600" : "text-zinc-500"}`}
+                >
+                  {title}
+                </p>
+                <p
+                  className={`mt-2 text-xl font-semibold ${title === "Deductions" ? "text-red-600" : title === "Net payroll" ? "text-emerald-700" : ""}`}
+                >
+                  {value}
+                </p>
               </section>
             ))}
           </div>

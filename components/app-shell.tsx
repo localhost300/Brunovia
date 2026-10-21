@@ -5536,11 +5536,15 @@ function Payroll() {
                       <p className="text-sm font-medium">{p.name}</p>
                       <p className="text-xs text-zinc-400">
                         Base ₦{p.base.toLocaleString()} + allowance ₦
-                        {p.allowance.toLocaleString()} − deductions ₦
-                        {p.totalDeductions.toLocaleString()}
+                        {p.allowance.toLocaleString()} − deductions{" "}
+                        <span className="text-red-600">
+                          ₦{p.totalDeductions.toLocaleString()}
+                        </span>
                       </p>
                     </div>
-                    <b className="text-sm">₦{p.net.toLocaleString()}</b>
+                    <b className="text-sm text-emerald-700">
+                      ₦{p.net.toLocaleString()}
+                    </b>
                   </div>
                 ))}
               </div>
