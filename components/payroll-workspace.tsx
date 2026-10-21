@@ -75,7 +75,7 @@ const demoCalculation = calculatePayroll({
 const demoRun: PayRun = {
   id: "demo-run",
   period: currentPeriod,
-  payment_date: currentPeriod,
+  payment_date: `${currentPeriod.slice(0, 7)}-16`,
   status: "DRAFT",
   employee_count: 2,
   gross_total: demoCalculation.grossPay + 350_000,
@@ -672,7 +672,7 @@ function CreateRunDialog({
   onClose: () => void;
   onCreate: (date: string) => Promise<void>;
 }) {
-  const [date, setDate] = useState(`${period.slice(0, 7)}-28`);
+  const [date, setDate] = useState(`${period.slice(0, 7)}-16`);
   return (
     <Modal title="Create payroll" close={onClose}>
       <p className="rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-900">

@@ -1073,7 +1073,13 @@ export function AppShell({
           </div>
         )}
         <main className="p-4 sm:p-6 lg:p-8">
-          {view === "Dashboard" ? (
+          {view === "Dashboard" && user.role === "EMPLOYEE" ? (
+            <EmployeeDashboard
+              user={user}
+              onNavigate={navigate}
+              weeklyAssignments={weeklyAssignments}
+            />
+          ) : view === "Dashboard" ? (
             <LiveDashboard />
           ) : view === "Employees" ? (
             <EmployeesWorkspace user={user} />
@@ -1217,6 +1223,126 @@ const Card = ({
     {children}
   </div>
 );
+type EmployeePaySummary = {
+  salary: number | null;
+  deductions: number | null;
+  netPay: number | null;
+  period: string | null;
+  loading: boolean;
+  error: string | null;
+};
+function useEmployeePaySummary(user: AppUser): EmployeePaySummary {
+  const [summary, setSummary] = useState<EmployeePaySummary>({
+    salary: null,
+    deductions: null,
+    netPay: null,
+    period: null,
+    loading: true,
+    error: null,
+  });
+  useEffect(() => {
+    let active = true;
+    const loadPaySummary = async () => {
+      setSummary({
+        salary: null,
+        deductions: null,
+        netPay: null,
+        period: null,
+        loading: true,
+        error: null,
+      });
+      if (!hasSupabaseConfig() || user.id.startsWith("demo-")) {
+        if (active) {
+          setSummary({
+            salary: null,
+            deductions: null,
+            netPay: null,
+            period: null,
+            loading: false,
+            error: "Salary data is unavailable for demo accounts.",
+          });
+        }
+        return;
+      }
+      try {
+        const supabase = createClient();
+        const { data: employeeRecord, error: employeeError } = await supabase
+          .from("employees")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (employeeError) throw employeeError;
+        if (!employeeRecord) {
+          throw new Error("No staff profile is linked to this account.");
+        }
+        const [compensationRequest, payrollRequest] = await Promise.all([
+          supabase
+            .from("payroll_compensation_profiles")
+            .select("basic_salary")
+            .eq("employee_id", employeeRecord.id)
+            .is("effective_to", null)
+            .maybeSingle(),
+          supabase
+            .from("payroll")
+            .select(
+              "basic_salary,deductions,tax,pension,penalty_fee,net_pay,period",
+            )
+            .eq("employee_id", employeeRecord.id)
+            .eq("status", "PAID")
+            .order("period", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
+        if (compensationRequest.error) throw compensationRequest.error;
+        if (payrollRequest.error) throw payrollRequest.error;
+        const compensation = compensationRequest.data;
+        const payrollRow = payrollRequest.data;
+        if (!compensation && !payrollRow) {
+          throw new Error("No salary or finalized payroll records are available yet.");
+        }
+        if (active) {
+          setSummary({
+            salary: Number(
+              compensation?.basic_salary ?? payrollRow?.basic_salary,
+            ),
+            deductions: payrollRow
+              ? Number(payrollRow.deductions ?? 0) +
+                Number(payrollRow.tax ?? 0) +
+                Number(payrollRow.pension ?? 0) +
+                Number(payrollRow.penalty_fee ?? 0)
+              : null,
+            netPay: payrollRow ? Number(payrollRow.net_pay) : null,
+            period: payrollRow?.period ?? null,
+            loading: false,
+            error: null,
+          });
+        }
+      } catch (error) {
+        if (active) {
+          setSummary({
+            salary: null,
+            deductions: null,
+            netPay: null,
+            period: null,
+            loading: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Unable to load salary and deduction details.",
+          });
+        }
+      }
+    };
+    void loadPaySummary();
+    return () => {
+      active = false;
+    };
+  }, [user.id]);
+  return summary;
+}
+function PaySummaryValue({ value }: { value: number | null }) {
+  return value === null ? "—" : `₦${value.toLocaleString()}`;
+}
 function EmployeeDashboard({
   user,
   onNavigate,
@@ -1232,11 +1358,7 @@ function EmployeeDashboard({
         person.email.toLowerCase() === user.email.toLowerCase() ||
         person.name === user.name,
     ) ?? people[0];
-  const [paySummary, setPaySummary] = useState({
-    totalSalary: employeeDetails[employee.id]?.salary ?? 0,
-    deductions: 0,
-    remaining: employeeDetails[employee.id]?.salary ?? 0,
-  });
+  const paySummary = useEmployeePaySummary(user);
   const [leaveSummary, setLeaveSummary] = useState({
     available: 0,
     pending: 0,
@@ -1245,10 +1367,8 @@ function EmployeeDashboard({
   useEffect(() => {
     let active = true;
     const loadDashboardDetails = async () => {
-      const salary = employeeDetails[employee.id]?.salary ?? 0;
       if (!hasSupabaseConfig() || user.id.startsWith("demo-")) {
         if (active) {
-          setPaySummary({ totalSalary: salary, deductions: 0, remaining: salary });
           setLeaveSummary({ available: 12, pending: 0, approved: 0 });
         }
         return;
@@ -1261,19 +1381,11 @@ function EmployeeDashboard({
         .maybeSingle();
       if (!active || employeeError || !employeeRecord) {
         if (active) {
-          setPaySummary({ totalSalary: salary, deductions: 0, remaining: salary });
           setLeaveSummary({ available: 12, pending: 0, approved: 0 });
         }
         return;
       }
-      const [payrollRequest, leaveBalancesRequest, leaveRequestsRequest] = await Promise.all([
-        supabase
-          .from("payroll")
-          .select("basic_salary,deductions,net_pay")
-          .eq("employee_id", employeeRecord.id)
-          .order("period", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+      const [leaveBalancesRequest, leaveRequestsRequest] = await Promise.all([
         supabase
           .from("leave_balances")
           .select("allowance,adjustment")
@@ -1285,9 +1397,6 @@ function EmployeeDashboard({
           .eq("employee_id", employeeRecord.id),
       ]);
       if (!active) return;
-      const payrollRow = payrollRequest.data;
-      const salaryValue = Number(payrollRow?.basic_salary ?? salary);
-      const deductionsValue = Number(payrollRow?.deductions ?? 0);
       const availableLeave = (leaveBalancesRequest.data ?? []).reduce(
         (total: number, row: any) => total + Number(row.allowance ?? 0) + Number(row.adjustment ?? 0),
         0,
@@ -1298,11 +1407,6 @@ function EmployeeDashboard({
       const approvedLeaves = (leaveRequestsRequest.data ?? []).filter((row: any) =>
         row.status === "APPROVED",
       ).length;
-      setPaySummary({
-        totalSalary: salaryValue,
-        deductions: deductionsValue,
-        remaining: Math.max(0, Number(payrollRow?.net_pay ?? salaryValue - deductionsValue)),
-      });
       setLeaveSummary({
         available: availableLeave || 12,
         pending: pendingLeaves,
@@ -1336,20 +1440,26 @@ function EmployeeDashboard({
       <div className="grid gap-4 sm:grid-cols-4">
         <Card>
           <p className="text-xs text-zinc-400">Total salary</p>
-          <p className="mt-2 text-lg font-semibold">₦{paySummary.totalSalary.toLocaleString()}</p>
-          <p className="text-xs text-zinc-400">Monthly gross pay</p>
+          <p className="mt-2 text-lg font-semibold">
+            {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.salary} />}
+          </p>
+          <p className="text-xs text-zinc-400">Paid on the 16th of each month</p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Deductions</p>
-          <p className="mt-2 text-lg font-semibold">₦{paySummary.deductions.toLocaleString()}</p>
-          <p className="text-xs text-zinc-400">Current deductions</p>
+          <p className="mt-2 text-lg font-semibold">
+            {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.deductions} />}
+          </p>
+          <p className="text-xs text-zinc-400">
+            {paySummary.period ? `Latest paid payroll · ${paySummary.period.slice(0, 7)}` : "Latest paid payroll deductions"}
+          </p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Amount left</p>
           <p className="mt-2 text-lg font-semibold text-emerald-700">
-            ₦{paySummary.remaining.toLocaleString()}
+            {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.netPay} />}
           </p>
-          <p className="text-xs text-zinc-400">After deductions</p>
+          <p className="text-xs text-zinc-400">Latest paid net pay</p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Leave balance</p>
@@ -1359,6 +1469,9 @@ function EmployeeDashboard({
           </p>
         </Card>
       </div>
+      {paySummary.error && (
+        <p className="mt-3 text-sm text-amber-700">{paySummary.error}</p>
+      )}
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Card>
           <h2 className="font-semibold">My upcoming schedule</h2>
@@ -1366,7 +1479,7 @@ function EmployeeDashboard({
             {[
               ["This week", `${currentShift} · ${shiftHours[currentShift]}`],
               ["Next week", `${nextShift} · ${shiftHours[nextShift]}`],
-              ["30 Sep", "Payroll date"],
+              ["Every 16th", "Salary payment date"],
             ].map(([a, b]) => (
               <div
                 key={a}
@@ -1454,11 +1567,7 @@ function EmployeePayroll({ user }: { user: AppUser }) {
         person.email.toLowerCase() === user.email.toLowerCase() ||
         person.name === user.name,
     ) ?? people[0];
-  const [paySummary, setPaySummary] = useState({
-    totalSalary: employeeDetails[employee.id]?.salary ?? 0,
-    deductions: 0,
-    remaining: employeeDetails[employee.id]?.salary ?? 0,
-  });
+  const paySummary = useEmployeePaySummary(user);
   const [leaveSummary, setLeaveSummary] = useState({
     available: 0,
     pending: 0,
@@ -1467,10 +1576,8 @@ function EmployeePayroll({ user }: { user: AppUser }) {
   useEffect(() => {
     let active = true;
     const loadPayrollDetails = async () => {
-      const salary = employeeDetails[employee.id]?.salary ?? 0;
       if (!hasSupabaseConfig() || user.id.startsWith("demo-")) {
         if (active) {
-          setPaySummary({ totalSalary: salary, deductions: 0, remaining: salary });
           setLeaveSummary({ available: 12, pending: 0, approved: 0 });
         }
         return;
@@ -1483,19 +1590,11 @@ function EmployeePayroll({ user }: { user: AppUser }) {
         .maybeSingle();
       if (!active || employeeError || !employeeRecord) {
         if (active) {
-          setPaySummary({ totalSalary: salary, deductions: 0, remaining: salary });
           setLeaveSummary({ available: 12, pending: 0, approved: 0 });
         }
         return;
       }
-      const [payrollRequest, leaveBalancesRequest, leaveRequestsRequest] = await Promise.all([
-        supabase
-          .from("payroll")
-          .select("basic_salary,deductions,net_pay")
-          .eq("employee_id", employeeRecord.id)
-          .order("period", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+      const [leaveBalancesRequest, leaveRequestsRequest] = await Promise.all([
         supabase
           .from("leave_balances")
           .select("allowance,adjustment")
@@ -1507,9 +1606,6 @@ function EmployeePayroll({ user }: { user: AppUser }) {
           .eq("employee_id", employeeRecord.id),
       ]);
       if (!active) return;
-      const payrollRow = payrollRequest.data;
-      const salaryValue = Number(payrollRow?.basic_salary ?? salary);
-      const deductionsValue = Number(payrollRow?.deductions ?? 0);
       const availableLeave = (leaveBalancesRequest.data ?? []).reduce(
         (total: number, row: any) => total + Number(row.allowance ?? 0) + Number(row.adjustment ?? 0),
         0,
@@ -1520,11 +1616,6 @@ function EmployeePayroll({ user }: { user: AppUser }) {
       const approvedLeaves = (leaveRequestsRequest.data ?? []).filter((row: any) =>
         row.status === "APPROVED",
       ).length;
-      setPaySummary({
-        totalSalary: salaryValue,
-        deductions: deductionsValue,
-        remaining: Math.max(0, Number(payrollRow?.net_pay ?? salaryValue - deductionsValue)),
-      });
       setLeaveSummary({
         available: availableLeave || 12,
         pending: pendingLeaves,
@@ -1591,25 +1682,31 @@ function EmployeePayroll({ user }: { user: AppUser }) {
     <>
       <Header
         title="My pay"
-        desc="Your total salary and current deductions."
+        desc="Your current salary and latest finalized payroll. Salary is paid on the 16th of each month."
       />
       <div className="grid gap-4 sm:grid-cols-4">
         <Card>
           <p className="text-xs text-zinc-400">Total salary</p>
-          <p className="mt-2 text-2xl font-semibold">₦{paySummary.totalSalary.toLocaleString()}</p>
-          <p className="text-xs text-zinc-400">Monthly gross pay</p>
+          <p className="mt-2 text-2xl font-semibold">
+            {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.salary} />}
+          </p>
+          <p className="text-xs text-zinc-400">Monthly basic salary</p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Deductions</p>
-          <p className="mt-2 text-2xl font-semibold">₦{paySummary.deductions.toLocaleString()}</p>
-          <p className="text-xs text-zinc-400">Current deductions</p>
+          <p className="mt-2 text-2xl font-semibold">
+            {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.deductions} />}
+          </p>
+          <p className="text-xs text-zinc-400">
+            {paySummary.period ? `Latest paid payroll · ${paySummary.period.slice(0, 7)}` : "Latest paid payroll deductions"}
+          </p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Amount left</p>
           <p className="mt-2 text-2xl font-semibold text-emerald-700">
-            ₦{paySummary.remaining.toLocaleString()}
+            {paySummary.loading ? "Loading…" : <PaySummaryValue value={paySummary.netPay} />}
           </p>
-          <p className="text-xs text-zinc-400">After deductions</p>
+          <p className="text-xs text-zinc-400">Latest paid net pay</p>
         </Card>
         <Card>
           <p className="text-xs text-zinc-400">Leave balance</p>
@@ -1619,6 +1716,9 @@ function EmployeePayroll({ user }: { user: AppUser }) {
           </p>
         </Card>
       </div>
+      {paySummary.error && (
+        <p className="mt-3 text-sm text-amber-700">{paySummary.error}</p>
+      )}
       <Card className="mt-5">
         <div className="flex flex-col justify-between gap-3 border-b pb-4 sm:flex-row sm:items-center">
           <div>
@@ -4722,9 +4822,11 @@ function Payroll() {
       />
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
-          <p className="text-sm text-zinc-500">Next payroll</p>
-          <p className="mt-2 text-2xl font-semibold">30 Sep 2026</p>
-          <p className="mt-2 text-xs text-amber-600">7 days remaining</p>
+          <p className="text-sm text-zinc-500">Salary payment date</p>
+          <p className="mt-2 text-2xl font-semibold">16th of each month</p>
+          <p className="mt-2 text-xs text-zinc-400">
+            Next payroll follows this schedule
+          </p>
         </Card>
         <Card>
           <p className="text-sm text-zinc-500">September gross</p>
