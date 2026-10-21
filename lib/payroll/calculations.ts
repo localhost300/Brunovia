@@ -6,8 +6,6 @@ export type PayrollInput = {
   overtimeRate?: number;
   unpaidLeaveDays?: number;
   workingDays?: number;
-  taxRate?: number;
-  pensionRate?: number;
   otherDeductions?: number;
 };
 
@@ -17,8 +15,6 @@ export type PayrollCalculation = {
   bonuses: number;
   overtime: number;
   grossPay: number;
-  tax: number;
-  pension: number;
   unpaidLeaveDeduction: number;
   otherDeductions: number;
   totalDeductions: number;
@@ -45,11 +41,9 @@ export function calculatePayroll(input: PayrollInput): PayrollCalculation {
     (basicSalary / workingDays) * nonNegative(input.unpaidLeaveDays),
   );
   const grossPay = money(basicSalary + allowances + bonuses + overtime);
-  const tax = money(grossPay * nonNegative(input.taxRate));
-  const pension = money(basicSalary * nonNegative(input.pensionRate));
   const otherDeductions = money(nonNegative(input.otherDeductions));
   const totalDeductions = money(
-    tax + pension + unpaidLeaveDeduction + otherDeductions,
+    unpaidLeaveDeduction + otherDeductions,
   );
   return {
     basicSalary,
@@ -57,8 +51,6 @@ export function calculatePayroll(input: PayrollInput): PayrollCalculation {
     bonuses,
     overtime,
     grossPay,
-    tax,
-    pension,
     unpaidLeaveDeduction,
     otherDeductions,
     totalDeductions,

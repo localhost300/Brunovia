@@ -9,11 +9,8 @@ create table if not exists public.payroll_compensation_profiles(
   basic_salary numeric(14,2) not null check(basic_salary >= 0),
   fixed_allowances numeric(14,2) not null default 0 check(fixed_allowances >= 0),
   overtime_rate numeric(14,2) not null default 0 check(overtime_rate >= 0),
-  tax_rate numeric(7,6) not null default .075 check(tax_rate between 0 and 1),
-  pension_rate numeric(7,6) not null default .08 check(pension_rate between 0 and 1),
   bank_name text,
   bank_account_number text check(bank_account_number is null or bank_account_number ~ '^[0-9]{10}$'),
-  pension_id text,
   created_by uuid references public.users(id),
   created_at timestamptz not null default now(),
   check(effective_to is null or effective_to >= effective_from)
@@ -88,7 +85,7 @@ begin
   from (
     select count(*)::integer employee_count,
       coalesce(sum(basic_salary+allowances+bonuses+overtime),0) gross_total,
-      coalesce(sum(deductions+tax+pension+penalty_fee),0) deduction_total,
+    coalesce(sum(deductions+penalty_fee),0) deduction_total,
       coalesce(sum(net_pay),0) net_total
     from payroll where pay_run_id=p_pay_run_id
   ) s where r.id=p_pay_run_id;
@@ -103,14 +100,13 @@ begin
   working_days:=public.business_days(normalized,month_end);
   insert into pay_runs(period,payment_date,prepared_by,prepared_at) values(normalized,p_payment_date,auth.uid(),now()) returning id into target_run;
 
-  insert into payroll(pay_run_id,employee_id,period,basic_salary,allowances,deductions,bonuses,overtime,tax,pension,penalty_fee,status,unpaid_leave_deduction,calculation_inputs)
+  insert into payroll(pay_run_id,employee_id,period,basic_salary,allowances,deductions,bonuses,overtime,penalty_fee,status,unpaid_leave_deduction,calculation_inputs)
   select target_run,e.id,normalized,c.basic_salary,c.fixed_allowances,
     round((c.basic_salary/greatest(working_days,1))*coalesce(ul.days,0),2),0,
     round(coalesce(ot.hours,0)*c.overtime_rate,2),
-    round((c.basic_salary+c.fixed_allowances+coalesce(ot.hours,0)*c.overtime_rate)*c.tax_rate,2),
-    round(c.basic_salary*c.pension_rate,2),0,'DRAFT',
+    0,'DRAFT',
     round((c.basic_salary/greatest(working_days,1))*coalesce(ul.days,0),2),
-    jsonb_build_object('working_days',working_days,'overtime_hours',coalesce(ot.hours,0),'unpaid_leave_days',coalesce(ul.days,0),'tax_rate',c.tax_rate,'pension_rate',c.pension_rate,'compensation_profile_id',c.id)
+    jsonb_build_object('working_days',working_days,'overtime_hours',coalesce(ot.hours,0),'unpaid_leave_days',coalesce(ul.days,0),'compensation_profile_id',c.id)
   from employees e
   join payroll_compensation_profiles c on c.employee_id=e.id and c.effective_from<=month_end and (c.effective_to is null or c.effective_to>=normalized)
   left join lateral (

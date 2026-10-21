@@ -142,15 +142,14 @@ begin
 
   insert into payroll(
     pay_run_id,employee_id,period,basic_salary,allowances,deductions,bonuses,
-    overtime,tax,pension,penalty_fee,status,unpaid_leave_deduction,
+    overtime,penalty_fee,status,unpaid_leave_deduction,
     calculation_inputs
   )
   select target_run,e.id,normalized,c.basic_salary,c.fixed_allowances,
     round((c.basic_salary/greatest(working_days,1))*(coalesce(ul.days,0)+coalesce(mc.days,0)),2),
     0,
     round(coalesce(ot.hours,0)*c.overtime_rate,2),
-    round((c.basic_salary+c.fixed_allowances+coalesce(ot.hours,0)*c.overtime_rate)*c.tax_rate,2),
-    round(c.basic_salary*c.pension_rate,2),0,'DRAFT',
+    0,'DRAFT',
     round((c.basic_salary/greatest(working_days,1))*coalesce(ul.days,0),2),
     jsonb_build_object(
       'working_days',working_days,
@@ -158,8 +157,6 @@ begin
       'unpaid_leave_days',coalesce(ul.days,0),
       'missed_clock_out_days',coalesce(mc.days,0),
       'missed_clock_out_deduction',round((c.basic_salary/greatest(working_days,1))*coalesce(mc.days,0),2),
-      'tax_rate',c.tax_rate,
-      'pension_rate',c.pension_rate,
       'compensation_profile_id',c.id
     )
   from employees e

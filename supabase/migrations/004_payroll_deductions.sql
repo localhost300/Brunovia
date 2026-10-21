@@ -40,14 +40,14 @@ create policy "admins amend deductions" on public.payroll_adjustments for update
 create or replace function public.apply_late_attendance_penalty() returns trigger language plpgsql security definer set search_path=public as $$
 declare target_payroll uuid; policy_amount numeric(14,2);
 begin
-  if new.status <> 'LATE' then return new; end if;
+  if new.status <> 'LATE' or new.work_date < date '2026-10-19' then return new; end if;
   select amount_per_occurrence into policy_amount from deduction_policies where adjustment_type='LATE_PENALTY' and active=true order by updated_at desc limit 1;
   select id into target_payroll from payroll where employee_id=new.employee_id and date_trunc('month',period)=date_trunc('month',new.work_date::timestamptz) and status='DRAFT' limit 1;
-  if target_payroll is not null and policy_amount is not null then
+  if target_payroll is not null and policy_amount > 0 then
     insert into payroll_adjustments(payroll_id,employee_id,adjustment_type,amount,reason,attendance_id)
     values(target_payroll,new.employee_id,'LATE_PENALTY',policy_amount,'Automatic deduction for late arrival',new.id)
     on conflict(attendance_id,adjustment_type) do nothing;
-    update payroll set penalty_fee=(select coalesce(sum(amount),0) from payroll_adjustments where payroll_id=target_payroll) where id=target_payroll;
+    update payroll set penalty_fee=(select coalesce(sum(amount),0) from payroll_adjustments where payroll_id=target_payroll and adjustment_type='LATE_PENALTY') where id=target_payroll;
   end if;
   return new;
 end $$;

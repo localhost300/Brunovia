@@ -41,8 +41,7 @@ type PayrollRow = {
   deductions: number;
   bonuses: number;
   overtime: number;
-  tax: number;
-  pension: number;
+  credit_adjustments: number;
   penalty_fee: number;
   unpaid_leave_deduction: number;
   calculation_inputs: {
@@ -68,8 +67,6 @@ const demoCalculation = calculatePayroll({
   allowances: 45_000,
   overtimeHours: 4,
   overtimeRate: 4_500,
-  taxRate: 0.075,
-  pensionRate: 0.08,
   otherDeductions: 2_500,
 });
 const demoRun: PayRun = {
@@ -96,8 +93,7 @@ const demoRows: PayrollRow[] = [
       demoCalculation.otherDeductions + demoCalculation.unpaidLeaveDeduction,
     bonuses: demoCalculation.bonuses,
     overtime: demoCalculation.overtime,
-    tax: demoCalculation.tax,
-    pension: demoCalculation.pension,
+    credit_adjustments: 0,
     penalty_fee: 0,
     unpaid_leave_deduction: 0,
     calculation_inputs: null,
@@ -157,7 +153,7 @@ export function PayrollWorkspace() {
           client
             .from("payroll")
             .select(
-              "id,employee_id,period,basic_salary,allowances,deductions,bonuses,overtime,tax,pension,penalty_fee,unpaid_leave_deduction,calculation_inputs,net_pay,payslip_path,employees(employee_id,first_name,last_name)",
+              "id,employee_id,period,basic_salary,allowances,deductions,bonuses,overtime,credit_adjustments,penalty_fee,unpaid_leave_deduction,calculation_inputs,net_pay,payslip_path,employees(employee_id,first_name,last_name)",
             )
             .eq("period", start)
             .order("created_at"),
@@ -214,12 +210,11 @@ export function PayrollWorkspace() {
             Number(row.basic_salary) +
             Number(row.allowances) +
             Number(row.bonuses) +
-            Number(row.overtime),
+            Number(row.overtime) +
+            Number(row.credit_adjustments),
           deductions:
             sum.deductions +
             Number(row.deductions) +
-            Number(row.tax) +
-            Number(row.pension) +
             Number(row.penalty_fee),
           net: sum.net + Number(row.net_pay),
         }),
@@ -333,8 +328,7 @@ export function PayrollWorkspace() {
       ["Allowances", row.allowances],
       ["Bonuses", row.bonuses],
       ["Overtime", row.overtime],
-      ["Tax", -row.tax],
-      ["Pension", -row.pension],
+      ["Credits", row.credit_adjustments],
       ["Other deductions", -(Number(row.deductions) + Number(row.penalty_fee))],
       ["Net pay", row.net_pay],
     ].forEach(([title, value], index) =>
@@ -509,7 +503,7 @@ export function PayrollWorkspace() {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1050px] text-left text-xs">
+              <table className="w-full min-w-[1150px] text-left text-xs">
                 <thead className="text-zinc-400">
                   <tr>
                     {[
@@ -517,8 +511,7 @@ export function PayrollWorkspace() {
                       "Basic",
                       "Allowances",
                       "Overtime",
-                      "Tax",
-                      "Pension",
+                      "Credits",
                       "Salary deductions",
                       "Net pay",
                       "Actions",
@@ -568,14 +561,13 @@ export function PayrollWorkspace() {
                         row.basic_salary,
                         row.allowances,
                         row.overtime,
-                        row.tax,
-                        row.pension,
+                        row.credit_adjustments,
                         Number(row.deductions) + Number(row.penalty_fee),
                         row.net_pay,
                       ].map((value, index) => (
                         <td
                           key={index}
-                          className={`px-3 tabular-nums ${index >= 3 && index <= 5 ? "text-red-600" : index === 6 ? "font-semibold text-emerald-700" : ""}`}
+                          className={`px-3 tabular-nums ${index === 4 ? "text-emerald-700" : index === 5 ? "text-red-600" : index === 6 ? "font-semibold text-emerald-700" : ""}`}
                         >
                           {money(Number(value))}
                         </td>
@@ -619,9 +611,47 @@ export function PayrollWorkspace() {
           row={adjusting}
           configured={configured}
           onClose={() => setAdjusting(null)}
-          onSaved={async () => {
+          onSaved={async (direction, amount) => {
             setAdjusting(null);
-            await load();
+            if (configured) {
+              await load();
+              return;
+            }
+            setRows((currentRows) =>
+              currentRows.map((currentRow) => {
+                if (currentRow.id !== adjusting.id) return currentRow;
+                const credit =
+                  Number(currentRow.credit_adjustments) +
+                  (direction === "CREDIT" ? amount : 0);
+                const deductions =
+                  Number(currentRow.deductions) +
+                  (direction === "DEBIT" ? amount : 0);
+                return {
+                  ...currentRow,
+                  credit_adjustments: credit,
+                  deductions,
+                  net_pay:
+                    Number(currentRow.net_pay) +
+                    (direction === "CREDIT" ? amount : -amount),
+                };
+              }),
+            );
+            setRun((currentRun) =>
+              currentRun
+                ? {
+                    ...currentRun,
+                    gross_total:
+                      currentRun.gross_total +
+                      (direction === "CREDIT" ? amount : 0),
+                    deduction_total:
+                      currentRun.deduction_total +
+                      (direction === "DEBIT" ? amount : 0),
+                    net_total:
+                      currentRun.net_total +
+                      (direction === "CREDIT" ? amount : -amount),
+                  }
+                : currentRun,
+            );
           }}
         />
       )}
@@ -715,38 +745,41 @@ function AdjustmentDialog({
   row: PayrollRow;
   configured: boolean;
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: (direction: "CREDIT" | "DEBIT", amount: number) => Promise<void>;
 }) {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
+  const [direction, setDirection] = useState<"CREDIT" | "DEBIT">("DEBIT");
   const [saving, setSaving] = useState(false);
   return (
-    <Modal title="Add payroll adjustment" close={onClose}>
+    <Modal title="Adjust payroll" close={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
           if (Number(amount) <= 0 || reason.trim().length < 5)
-            return toast.error("Enter a positive amount and a clear reason");
+            return toast.error("Enter an amount greater than zero and a clear reason");
           setSaving(true);
           try {
             if (configured) {
-              const { data: auth } = await createClient().auth.getUser();
-              const { error } = await createClient()
+              const client = createClient();
+              const { data: auth } = await client.auth.getUser();
+              const { error } = await client
                 .from("payroll_adjustments")
                 .insert({
                   payroll_id: row.id,
                   employee_id: row.employee_id,
                   adjustment_type: "OTHER",
+                  direction,
                   amount: Number(amount),
                   reason: reason.trim(),
                   created_by: auth.user?.id,
                 });
               if (error) throw error;
             }
+            await onSaved(direction, Number(amount));
             toast.success(
-              "Deduction saved and reflected in the payroll totals",
+              `${direction === "CREDIT" ? "Credit" : "Debit"} applied to payroll`,
             );
-            await onSaved();
           } catch (error) {
             toast.error(
               error instanceof Error
@@ -758,6 +791,19 @@ function AdjustmentDialog({
           }
         }}
       >
+        <label className="block text-xs font-medium">
+          Adjustment type
+          <select
+            value={direction}
+            onChange={(e) =>
+              setDirection(e.target.value as "CREDIT" | "DEBIT")
+            }
+            className="input mt-1.5"
+          >
+            <option value="CREDIT">Credit — add to pay</option>
+            <option value="DEBIT">Debit — deduct from pay</option>
+          </select>
+        </label>
         <label className="block text-xs font-medium">
           Amount (NGN)
           <input
@@ -791,7 +837,7 @@ function AdjustmentDialog({
             disabled={saving}
             className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
-            Save adjustment
+            Apply adjustment
           </button>
         </div>
       </form>

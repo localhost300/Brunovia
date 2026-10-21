@@ -360,7 +360,6 @@ const employeeDetails: Record<
     shift: string;
     salary: number;
     bank: string;
-    pension: string;
   }
 > = {
   "PF-1001": {
@@ -373,7 +372,6 @@ const employeeDetails: Record<
     shift: "Morning · 07:00–15:00",
     salary: 620000,
     bank: "GTBank · •••• 4821",
-    pension: "PEN1002841",
   },
   "PF-1002": {
     phone: "+234 806 330 8821",
@@ -385,7 +383,6 @@ const employeeDetails: Record<
     shift: "Evening · 15:00–23:00",
     salary: 780000,
     bank: "Access · •••• 1892",
-    pension: "PEN1002914",
   },
   "PF-1003": {
     phone: "+234 701 992 4021",
@@ -397,7 +394,6 @@ const employeeDetails: Record<
     shift: "Morning · 07:00–15:00",
     salary: 590000,
     bank: "UBA · •••• 7310",
-    pension: "PEN1003182",
   },
   "PF-1004": {
     phone: "+234 809 221 5477",
@@ -409,7 +405,6 @@ const employeeDetails: Record<
     shift: "Morning · 07:00–15:00",
     salary: 510000,
     bank: "Zenith · •••• 6204",
-    pension: "PEN1003298",
   },
   "PF-1005": {
     phone: "+234 812 303 7782",
@@ -421,7 +416,6 @@ const employeeDetails: Record<
     shift: "Evening · 15:00–23:00",
     salary: 680000,
     bank: "FirstBank · •••• 0281",
-    pension: "PEN1002440",
   },
   "PF-1006": {
     phone: "+234 704 880 1132",
@@ -433,7 +427,6 @@ const employeeDetails: Record<
     shift: "Evening · 15:00–23:00",
     salary: 440000,
     bank: "Stanbic · •••• 9134",
-    pension: "PEN1003521",
   },
 };
 const attendance = [
@@ -1285,7 +1278,7 @@ function useEmployeePaySummary(user: AppUser): EmployeePaySummary {
           supabase
             .from("payroll")
             .select(
-              "basic_salary,deductions,tax,pension,penalty_fee,net_pay,period",
+              "basic_salary,deductions,penalty_fee,net_pay,period",
             )
             .eq("employee_id", employeeRecord.id)
             .eq("status", "PAID")
@@ -1307,8 +1300,6 @@ function useEmployeePaySummary(user: AppUser): EmployeePaySummary {
             ),
             deductions: payrollRow
               ? Number(payrollRow.deductions ?? 0) +
-                Number(payrollRow.tax ?? 0) +
-                Number(payrollRow.pension ?? 0) +
                 Number(payrollRow.penalty_fee ?? 0)
               : null,
             netPay: payrollRow ? Number(payrollRow.net_pay) : null,
@@ -1363,10 +1354,12 @@ type LatePenaltyPolicy = {
 };
 const ATTENDANCE_HISTORY_PAGE_SIZE = 50;
 const ATTENDANCE_QUERY_PAGE_SIZE = 500;
+const LATE_DEDUCTION_START_DATE = "2026-10-19";
 function getLatePenaltyEstimate(
-  row: Pick<EmployeeAttendanceHistoryRow, "clock_in" | "shifts">,
+  row: Pick<EmployeeAttendanceHistoryRow, "work_date" | "clock_in" | "shifts">,
   policy: LatePenaltyPolicy,
 ) {
+  if (row.work_date < LATE_DEDUCTION_START_DATE) return 0;
   if (!row.clock_in || !row.shifts?.start_time) return 0;
   const [hour, minute] = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Africa/Lagos",
@@ -1466,6 +1459,7 @@ function EmployeeAttendanceHistory({ user }: { user: AppUser }) {
                 .select("id,work_date,clock_in,clock_out,status,shifts(name,start_time)")
                 .eq("employee_id", employee.id)
                 .eq("status", "LATE")
+                .gte("work_date", LATE_DEDUCTION_START_DATE)
                 .order("work_date", { ascending: false })
                 .range(offset, offset + ATTENDANCE_QUERY_PAGE_SIZE - 1);
               if (page.error) throw page.error;
@@ -2932,10 +2926,6 @@ function Employees() {
                   className="input mt-1.5"
                 />
               </label>
-              <label className="text-xs font-medium">
-                Pension ID
-                <input name="pensionId" required className="input mt-1.5" />
-              </label>
             </div>
           </Card>
           <Card>
@@ -3895,7 +3885,6 @@ function EmployeeProfile({
     salary: d.salary,
     bankName: d.bank.split(" · ")[0],
     bank: d.bank.split(" · ")[1] ?? d.bank,
-    pension: d.pension,
     biometric: "Enrolled · Right index",
   });
   const [draft, setDraft] = useState(profile);
@@ -4100,7 +4089,7 @@ function EmployeeProfile({
             <div className="mb-5">
               <h2 className="font-semibold">Payroll & compliance</h2>
               <p className="mt-1 text-xs text-zinc-500">
-                Sensitive compensation, payment, pension, and biometric details.
+                Sensitive compensation, payment, and biometric details.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -4149,20 +4138,6 @@ function EmployeeProfile({
                   }
                   className="input mt-1.5"
                   placeholder="Account number or masked ending"
-                />
-              </label>
-              <label className="text-xs font-medium">
-                Pension ID
-                <input
-                  required
-                  value={draft.pension}
-                  onChange={(event) =>
-                    setDraft((value) => ({
-                      ...value,
-                      pension: event.target.value,
-                    }))
-                  }
-                  className="input mt-1.5"
                 />
               </label>
               <label className="text-xs font-medium">
@@ -4228,7 +4203,6 @@ function EmployeeProfile({
         ["Base salary", `₦${profile.salary.toLocaleString()} / month`],
         ["Bank name", profile.bankName],
         ["Bank account", profile.bank],
-        ["Pension ID", profile.pension],
         ["Biometric", profile.biometric],
       ],
     ],
@@ -4426,7 +4400,6 @@ function EmployeeRecordTab({
       rows: [
         ["Employment contract", "Contract", "12 Feb 2022", "—", "Verified"],
         ["National ID", "Identity", "12 Feb 2022", "11 Feb 2032", "Verified"],
-        ["Tax form", "Compliance", "05 Jan 2026", "31 Dec 2026", "Current"],
       ],
       action: "Upload document",
     },
@@ -4861,9 +4834,7 @@ function Payroll() {
       base = details.salary,
       allowance = 45000 + i * 5000,
       overtime = i % 2 ? 18000 : 0,
-      tax = Math.round(base * 0.075),
-      pension = Math.round(base * 0.08),
-      lateMinutes = i === 1 ? [14, 38, 70, 22, 45] : i === 4 ? [18, 34] : [],
+      lateMinutes: number[] = [],
       lateCount = lateMinutes.length,
       latePenalty = lateRule.active
         ? lateMinutes.reduce((sum, minutes) => {
@@ -4878,8 +4849,7 @@ function Payroll() {
       manualPenalty = manualDeductions[p.id] ?? 0,
       penalty = latePenalty + manualPenalty,
       gross = base + allowance + overtime,
-      statutoryDeductions = tax + pension,
-      totalDeductions = statutoryDeductions + penalty;
+      totalDeductions = penalty;
     return {
       ...p,
       bankName,
@@ -4888,9 +4858,6 @@ function Payroll() {
       allowance,
       overtime,
       gross,
-      tax,
-      pension,
-      statutoryDeductions,
       lateCount,
       latePenalty,
       manualPenalty,
@@ -5117,7 +5084,6 @@ function Payroll() {
                       {[
                         "Employee",
                         "Gross earnings",
-                        "Deductions",
                         "Penalty",
                         "Net pay",
                       ].map((h) => (
@@ -5135,7 +5101,6 @@ function Payroll() {
                           ₦
                           {(p.base + p.allowance + p.overtime).toLocaleString()}
                         </td>
-                        <td>₦{(p.tax + p.pension).toLocaleString()}</td>
                         <td className="text-red-600">
                           ₦{p.penalty.toLocaleString()}
                         </td>
@@ -5567,7 +5532,7 @@ function Payroll() {
                       <p className="text-xs text-zinc-400">
                         Base ₦{p.base.toLocaleString()} + allowance ₦
                         {p.allowance.toLocaleString()} − deductions ₦
-                        {(p.tax + p.pension + p.penalty).toLocaleString()}
+                        {p.totalDeductions.toLocaleString()}
                       </p>
                     </div>
                     <b className="text-sm">₦{p.net.toLocaleString()}</b>
@@ -7127,7 +7092,6 @@ function SettingsPage({ userRole }: { userRole: UserRole }) {
                 label="Late penalty"
                 placeholder="₦2,500 per occurrence"
               />
-              <FormField label="Pension rate" placeholder="8%" />
               <FormField
                 label="Approval workflow"
                 placeholder="HR Manager → Super Admin"

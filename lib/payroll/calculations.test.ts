@@ -15,8 +15,6 @@ describe("calculatePayroll", () => {
         overtimeRate: 2_000,
         unpaidLeaveDays: 1,
         workingDays: 22,
-        taxRate: 0.075,
-        pensionRate: 0.08,
         otherDeductions: 2_500,
       }),
     ).toEqual({
@@ -25,12 +23,10 @@ describe("calculatePayroll", () => {
       bonuses: 0,
       overtime: 10_000,
       grossPay: 260_000,
-      tax: 19_500,
-      pension: 17_600,
       unpaidLeaveDeduction: 10_000,
       otherDeductions: 2_500,
-      totalDeductions: 49_600,
-      netPay: 210_400,
+      totalDeductions: 12_500,
+      netPay: 247_500,
     });
   });
   it("never produces a negative payment", () =>
