@@ -1343,6 +1343,378 @@ function useEmployeePaySummary(user: AppUser): EmployeePaySummary {
 function PaySummaryValue({ value }: { value: number | null }) {
   return value === null ? "—" : `₦${value.toLocaleString()}`;
 }
+type EmployeeAttendanceHistoryRow = {
+  id: string;
+  work_date: string;
+  clock_in: string | null;
+  clock_out: string | null;
+  status: string;
+  shifts: { name: string; start_time?: string } | null;
+};
+type LatePenaltyTier = {
+  from_minutes: number;
+  to_minutes: number | null;
+  amount: number;
+};
+type LatePenaltyPolicy = {
+  grace_minutes: number;
+  tiers: LatePenaltyTier[];
+  amount_per_occurrence: number;
+};
+const ATTENDANCE_HISTORY_PAGE_SIZE = 50;
+const ATTENDANCE_QUERY_PAGE_SIZE = 500;
+function getLatePenaltyEstimate(
+  row: Pick<EmployeeAttendanceHistoryRow, "clock_in" | "shifts">,
+  policy: LatePenaltyPolicy,
+) {
+  if (!row.clock_in || !row.shifts?.start_time) return 0;
+  const [hour, minute] = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lagos",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+    .format(new Date(row.clock_in))
+    .split(":")
+    .map(Number);
+  const [shiftHour, shiftMinute] = row.shifts.start_time
+    .split(":")
+    .slice(0, 2)
+    .map(Number);
+  const minutesLate = hour * 60 + minute - (shiftHour * 60 + shiftMinute);
+  if (minutesLate <= policy.grace_minutes) return 0;
+  const tier = policy.tiers.find(
+    (item) =>
+      minutesLate >= item.from_minutes &&
+      (item.to_minutes === null || minutesLate <= item.to_minutes),
+  );
+  return tier?.amount ?? 0;
+}
+function EmployeeAttendanceHistory({ user }: { user: AppUser }) {
+  const [rows, setRows] = useState<EmployeeAttendanceHistoryRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [lateCount, setLateCount] = useState(0);
+  const [recordedLateDeductions, setRecordedLateDeductions] = useState<number | null>(null);
+  const [proposedLateDeductions, setProposedLateDeductions] = useState<number | null>(null);
+  const [proposedLateCount, setProposedLateCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadHistory = async () => {
+      setLoading(true);
+      setError(null);
+      if (!hasSupabaseConfig() || user.id.startsWith("demo-")) {
+        if (active) {
+          setRows([]);
+          setTotalCount(0);
+          setLateCount(0);
+          setRecordedLateDeductions(null);
+          setProposedLateDeductions(null);
+          setError("Attendance history is unavailable for demo accounts.");
+          setLoading(false);
+        }
+        return;
+      }
+      try {
+        const supabase = createClient();
+        const { data: employee, error: employeeError } = await supabase
+          .from("employees")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (employeeError) throw employeeError;
+        if (!employee) {
+          throw new Error("No staff profile is linked to this account.");
+        }
+        const [historyResult, lateResult, policyResult] = await Promise.all([
+          supabase
+            .from("attendance")
+            .select("id,work_date,clock_in,clock_out,status,shifts(name)", {
+              count: "exact",
+            })
+            .eq("employee_id", employee.id)
+            .order("work_date", { ascending: false })
+            .order("clock_in", { ascending: false })
+            .range(0, ATTENDANCE_HISTORY_PAGE_SIZE - 1),
+          supabase
+            .from("attendance")
+            .select("id", { count: "exact", head: true })
+            .eq("employee_id", employee.id)
+            .eq("status", "LATE"),
+          supabase
+            .from("deduction_policies")
+            .select("grace_minutes,tiers,amount_per_occurrence")
+            .eq("adjustment_type", "LATE_PENALTY")
+            .eq("active", true)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
+        if (historyResult.error) throw historyResult.error;
+        if (lateResult.error) throw lateResult.error;
+        if (policyResult.error) throw policyResult.error;
+
+        const [lateRows, adjustments] = await Promise.all([
+          (async () => {
+            const result: EmployeeAttendanceHistoryRow[] = [];
+            for (let offset = 0; ; offset += ATTENDANCE_QUERY_PAGE_SIZE) {
+              const page = await supabase
+                .from("attendance")
+                .select("id,work_date,clock_in,clock_out,status,shifts(name,start_time)")
+                .eq("employee_id", employee.id)
+                .eq("status", "LATE")
+                .order("work_date", { ascending: false })
+                .range(offset, offset + ATTENDANCE_QUERY_PAGE_SIZE - 1);
+              if (page.error) throw page.error;
+              result.push(
+                ...((page.data ?? []) as unknown as EmployeeAttendanceHistoryRow[]),
+              );
+              if ((page.data ?? []).length < ATTENDANCE_QUERY_PAGE_SIZE) break;
+            }
+            return result;
+          })(),
+          (async () => {
+            const result: {
+              attendance_id: string | null;
+              amount: number;
+              payroll: { status: string } | null;
+            }[] = [];
+            for (let offset = 0; ; offset += ATTENDANCE_QUERY_PAGE_SIZE) {
+              const page = await supabase
+                .from("payroll_adjustments")
+                .select("attendance_id,amount,payroll!inner(status)")
+                .eq("employee_id", employee.id)
+                .eq("adjustment_type", "LATE_PENALTY")
+                .range(offset, offset + ATTENDANCE_QUERY_PAGE_SIZE - 1);
+              if (page.error) throw page.error;
+              result.push(
+                ...((page.data ?? []) as unknown as typeof result),
+              );
+              if ((page.data ?? []).length < ATTENDANCE_QUERY_PAGE_SIZE) break;
+            }
+            return result;
+          })(),
+        ]);
+        const recordedAdjustments = new Map<string, number>();
+        const adjustedAttendance = new Set<string>();
+        for (const adjustment of adjustments) {
+          if (!adjustment.attendance_id) continue;
+          adjustedAttendance.add(adjustment.attendance_id);
+          if (adjustment.payroll?.status === "PAID") {
+            recordedAdjustments.set(
+              adjustment.attendance_id,
+              (recordedAdjustments.get(adjustment.attendance_id) ?? 0) +
+                Number(adjustment.amount),
+            );
+          }
+        }
+        const recordedTotal = [...recordedAdjustments.values()].reduce(
+          (sum, amount) => sum + amount,
+          0,
+        );
+        const policy = policyResult.data as unknown as LatePenaltyPolicy | null;
+        const proposed = policy
+          ? lateRows.reduce(
+              (result, row) => {
+                if (adjustedAttendance.has(row.id)) return result;
+                const amount = getLatePenaltyEstimate(row, policy);
+                if (amount > 0) {
+                  result.amount += amount;
+                  result.count += 1;
+                }
+                return result;
+              },
+              { amount: 0, count: 0 },
+            )
+          : null;
+        if (active) {
+          setRows(
+            (historyResult.data ?? []) as unknown as EmployeeAttendanceHistoryRow[],
+          );
+          setTotalCount(historyResult.count ?? 0);
+          setLateCount(lateResult.count ?? 0);
+          setRecordedLateDeductions(recordedTotal);
+          setProposedLateDeductions(proposed?.amount ?? null);
+          setProposedLateCount(proposed?.count ?? 0);
+        }
+      } catch (caught) {
+        if (active) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Unable to load attendance history.",
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void loadHistory();
+    return () => {
+      active = false;
+    };
+  }, [user.id]);
+
+  const loadOlderRecords = async () => {
+    if (!hasSupabaseConfig() || loadingMore) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { data: employee, error: employeeError } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (employeeError) throw employeeError;
+      if (!employee) throw new Error("No staff profile is linked to this account.");
+      const start = rows.length;
+      const { data, error: historyError } = await supabase
+        .from("attendance")
+        .select("id,work_date,clock_in,clock_out,status,shifts(name)")
+        .eq("employee_id", employee.id)
+        .order("work_date", { ascending: false })
+        .order("clock_in", { ascending: false })
+        .range(start, start + ATTENDANCE_HISTORY_PAGE_SIZE - 1);
+      if (historyError) throw historyError;
+      setRows((current) => [
+        ...current,
+        ...((data ?? []) as unknown as EmployeeAttendanceHistoryRow[]),
+      ]);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to load older attendance records.",
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  return (
+    <Card className="mt-5">
+      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+        <div>
+          <h2 className="font-semibold">My attendance history</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            All recorded attendance, including previous late arrivals.
+          </p>
+        </div>
+        <p className="text-sm text-zinc-500">
+          {loading ? "Loading…" : `${totalCount} records · ${lateCount} late`}
+        </p>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg bg-zinc-50 p-4 dark:bg-zinc-900">
+          <p className="text-xs text-zinc-500">Late penalties in paid payrolls</p>
+          <p className="mt-1 font-semibold">
+            {loading || recordedLateDeductions === null
+              ? "—"
+              : `₦${recordedLateDeductions.toLocaleString()}`}
+          </p>
+        </div>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:bg-amber-950/20">
+          <p className="text-xs text-amber-800">
+            Estimated unrecorded late penalties · review only
+          </p>
+          <p className="mt-1 font-semibold text-amber-900">
+            {loading || proposedLateDeductions === null
+              ? "—"
+              : `₦${proposedLateDeductions.toLocaleString()}`}
+          </p>
+          <p className="mt-1 text-xs text-amber-800">
+            {proposedLateDeductions === null
+              ? "No active late-penalty policy is available to estimate."
+              : `${proposedLateCount} late record${proposedLateCount === 1 ? "" : "s"} estimated using the current policy. Not deducted; HR review is required.`}
+          </p>
+        </div>
+      </div>
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {loading ? (
+        <div className="grid min-h-32 place-items-center">
+          <Loader2 className="animate-spin text-emerald-700" />
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="mt-4 rounded-lg bg-zinc-50 p-5 text-sm text-zinc-500 dark:bg-zinc-900">
+          No attendance records have been recorded for your staff profile.
+        </p>
+      ) : (
+        <>
+          <div className="mt-4 max-h-[32rem] overflow-auto">
+            <table className="w-full min-w-[620px] text-left text-sm">
+              <thead className="sticky top-0 bg-white text-xs text-zinc-400 dark:bg-zinc-950">
+                <tr>
+                  {["Date", "Shift", "Clock in", "Clock out", "Status"].map(
+                    (heading) => (
+                      <th key={heading} className="border-b px-3 py-3 font-medium">
+                        {heading}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-b last:border-0">
+                    <td className="px-3 py-3">
+                      {new Date(`${row.work_date}T12:00:00`).toLocaleDateString(
+                        "en-NG",
+                        { day: "numeric", month: "short", year: "numeric" },
+                      )}
+                    </td>
+                    <td className="px-3 py-3">{row.shifts?.name ?? "—"}</td>
+                    <td className="px-3 py-3">
+                      {row.clock_in
+                        ? new Date(row.clock_in).toLocaleTimeString("en-NG", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-3">
+                      {row.clock_out
+                        ? new Date(row.clock_out).toLocaleTimeString("en-NG", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-medium ${
+                          row.status === "LATE"
+                            ? "bg-red-50 text-red-700"
+                            : row.status === "PRESENT"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-zinc-100 text-zinc-700"
+                        }`}
+                      >
+                        {row.status.replaceAll("_", " ")}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {rows.length < totalCount && (
+            <button
+              onClick={() => void loadOlderRecords()}
+              disabled={loadingMore}
+              className="mt-4 rounded-lg border px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : "Load older records"}
+            </button>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
 function EmployeeDashboard({
   user,
   onNavigate,
@@ -1506,6 +1878,7 @@ function EmployeeDashboard({
           </div>
         </Card>
       </div>
+      <EmployeeAttendanceHistory user={user} />
     </>
   );
 }
