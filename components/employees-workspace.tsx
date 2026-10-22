@@ -11,7 +11,7 @@ import {
   Plus,
   RefreshCw,
   Search,
-  UserMinus,
+  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -308,7 +308,7 @@ export function EmployeesWorkspace({ user }: { user: AppUser }) {
       await refresh();
     } else throw new Error("Supabase is not configured");
   };
-  const deactivate = async (employee: EmployeeRow) => {
+  const deleteEmployee = async (employee: EmployeeRow) => {
     if (configured) {
       const { error } = await createClient()
         .from("employees")
@@ -355,10 +355,10 @@ export function EmployeesWorkspace({ user }: { user: AppUser }) {
           setEditing(false);
           setMode("list");
         }}
-        onDeactivate={async () => {
-          await deactivate(selected);
+        onDelete={async () => {
+          await deleteEmployee(selected);
           toast.success(
-            "Employee deactivated; historical records were retained",
+            "Employee deleted from the active directory; historical records were retained",
           );
         }}
       />
@@ -854,7 +854,7 @@ function EmployeeProfile({
   setEditing,
   onBack,
   onSave,
-  onDeactivate,
+  onDelete,
 }: {
   employee: EmployeeRow;
   departments: Department[];
@@ -865,9 +865,9 @@ function EmployeeProfile({
   setEditing: (value: boolean) => void;
   onBack: () => void;
   onSave: (values: EmployeeInput) => Promise<void>;
-  onDeactivate: () => Promise<void>;
+  onDelete: () => Promise<void>;
 }) {
-  const [deactivating, setDeactivating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [invitationSent, setInvitationSent] = useState(false);
@@ -1067,30 +1067,30 @@ function EmployeeProfile({
                 Edit profile
               </button>
               <button
-                disabled={deactivating}
+                disabled={deleting}
                 onClick={async () => {
                   if (
                     !window.confirm(
-                      `Deactivate ${employee.first_name} ${employee.last_name}? Historical records will be retained.`,
+                      `Delete ${employee.first_name} ${employee.last_name} from the active employee directory? Historical records will be retained.`,
                     )
                   )
                     return;
-                  setDeactivating(true);
+                  setDeleting(true);
                   try {
-                    await onDeactivate();
+                    await onDelete();
                   } catch (error) {
                     toast.error(
                       error instanceof Error
                         ? error.message
-                        : "Unable to deactivate employee",
+                        : "Unable to delete employee",
                     );
-                    setDeactivating(false);
+                    setDeleting(false);
                   }
                 }}
                 className="flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-700 disabled:opacity-60"
               >
-                <UserMinus size={14} />
-                {deactivating ? "Deactivating…" : "Deactivate"}
+                <Trash2 size={14} />
+                {deleting ? "Deleting…" : "Delete employee"}
               </button>
             </div>
           )}
