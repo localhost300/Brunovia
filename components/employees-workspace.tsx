@@ -96,6 +96,18 @@ const typeLabel = (value: string) =>
 const initials = (employee: EmployeeRow) =>
   `${employee.first_name[0] ?? ""}${employee.last_name[0] ?? ""}`.toUpperCase();
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) return error.message;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  )
+    return error.message;
+  return fallback;
+};
+
 function emptyInput(): EmployeeInput {
   return {
     employee_id: "",
@@ -1080,9 +1092,7 @@ function EmployeeProfile({
                     await onDelete();
                   } catch (error) {
                     toast.error(
-                      error instanceof Error
-                        ? error.message
-                        : "Unable to delete employee",
+                      getErrorMessage(error, "Unable to delete employee"),
                     );
                     setDeleting(false);
                   }
