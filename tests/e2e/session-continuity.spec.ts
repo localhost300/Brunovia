@@ -62,17 +62,21 @@ test.beforeEach(async ({ page }) => {
         current_organization_id: organizationId,
       };
     else if (url.pathname === "/rest/v1/organization_memberships")
-      body = [
-        {
-          organization_id: organizationId,
-          role: "SUPER_ADMIN",
-          organizations: {
-            id: organizationId,
-            name: "Test workspace",
-            slug: "test-workspace",
-          },
-        },
-      ];
+      body =
+        url.searchParams.get("select") === "role"
+          ? { role: "SUPER_ADMIN" }
+          : [
+              {
+                organization_id: organizationId,
+                role: "SUPER_ADMIN",
+                status: "ACTIVE",
+                organizations: {
+                  id: organizationId,
+                  name: "Test workspace",
+                  slug: "test-workspace",
+                },
+              },
+            ];
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -159,4 +163,17 @@ test("a different account does not inherit the employee draft", async ({
     page.getByRole("heading", { name: "Register employee" }),
   ).toHaveCount(0);
   await expect(page.getByLabel("First name", { exact: true })).toHaveCount(0);
+});
+
+test("uses the active organization membership role", async ({ page }) => {
+  await page.route("**/rest/v1/organization_memberships?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ role: "EMPLOYEE" }),
+    }),
+  );
+  await emitAuth(page, "USER_UPDATED");
+  await expect(page.getByText("Employee", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Super Admin", { exact: true })).toHaveCount(0);
 });

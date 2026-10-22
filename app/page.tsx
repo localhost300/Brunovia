@@ -57,7 +57,7 @@ export default function Home({
       if (!active || revision !== authRevision.current) return;
       const { data: profile, error } = await supabase
         .from("users")
-        .select("full_name,role")
+        .select("full_name,role,current_organization_id")
         .eq("id", userId)
         .single();
 
@@ -75,7 +75,40 @@ export default function Home({
         return;
       }
 
-      if (allowedRoles && !allowedRoles.includes(profile.role)) {
+      let effectiveRole = profile.role;
+      let membershipQuery = supabase
+        .from("organization_memberships")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("status", "ACTIVE");
+      if (profile.current_organization_id) {
+        membershipQuery = membershipQuery.eq(
+          "organization_id",
+          profile.current_organization_id,
+        );
+      } else {
+        membershipQuery = membershipQuery
+          .order("joined_at", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: true })
+          .limit(1);
+      }
+      const { data: membership, error: membershipError } =
+        await membershipQuery.maybeSingle();
+
+      if (!active || revision !== authRevision.current) return;
+      if (membershipError) {
+        if (currentUser.current?.id === userId) return;
+        currentUser.current = null;
+        setUser(null);
+        setAuthError(
+          "Your account is signed in, but its organization role could not be verified. Ask an administrator to check your organization membership.",
+        );
+        setLoading(false);
+        return;
+      }
+      if (membership) effectiveRole = membership.role;
+
+      if (allowedRoles && !allowedRoles.includes(effectiveRole)) {
         await supabase.auth.signOut();
         currentUser.current = null;
         setUser(null);
@@ -91,7 +124,7 @@ export default function Home({
         id: userId,
         email,
         name: profile.full_name,
-        role: profile.role,
+        role: effectiveRole,
       };
       currentUser.current = nextUser;
       setUser(nextUser);

@@ -357,6 +357,7 @@ export function EmployeesWorkspace({ user }: { user: AppUser }) {
         departments={departments}
         managers={managers}
         canManage={canManage}
+        userRole={user.role}
         configured={configured}
         editing={editing}
         setEditing={setEditing}
@@ -861,6 +862,7 @@ function EmployeeProfile({
   departments,
   managers,
   canManage,
+  userRole,
   configured,
   editing,
   setEditing,
@@ -872,6 +874,7 @@ function EmployeeProfile({
   departments: Department[];
   managers: EmployeeRow[];
   canManage: boolean;
+  userRole: AppUser["role"];
   configured: boolean;
   editing: boolean;
   setEditing: (value: boolean) => void;
@@ -1091,9 +1094,28 @@ function EmployeeProfile({
                   try {
                     await onDelete();
                   } catch (error) {
-                    toast.error(
-                      getErrorMessage(error, "Unable to delete employee"),
+                    const message = getErrorMessage(
+                      error,
+                      "Unable to delete employee",
                     );
+                    if (
+                      message.toLowerCase().includes("row-level security")
+                    ) {
+                      if (
+                        userRole !== "SUPER_ADMIN" &&
+                        userRole !== "HR_MANAGER"
+                      ) {
+                        toast.error(
+                          `Your active organization role is ${statusLabel(userRole)}. Ask a Super Admin to give you HR Manager or Super Admin access in Settings → Roles & permissions.`,
+                        );
+                      } else {
+                        toast.error(
+                          `${message} Your active role is ${statusLabel(userRole)}. Verify that you and this employee are in the same organization; if so, ask an administrator to check the organization membership and database migrations.`,
+                        );
+                      }
+                    } else {
+                      toast.error(message);
+                    }
                     setDeleting(false);
                   }
                 }}
