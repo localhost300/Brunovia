@@ -322,14 +322,9 @@ export function EmployeesWorkspace({ user }: { user: AppUser }) {
   };
   const deleteEmployee = async (employee: EmployeeRow) => {
     if (configured) {
-      const { error } = await createClient()
-        .from("employees")
-        .update({
-          status: "INACTIVE",
-          deleted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", employee.id);
+      const { error } = await createClient().rpc("delete_employee", {
+        p_employee_id: employee.id,
+      });
       if (error) throw error;
       await refresh();
     } else throw new Error("Supabase is not configured");
